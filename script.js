@@ -1,7 +1,7 @@
 if (typeof ajk !== 'undefined')
 {
-    ajk.stopTicking();
-    //ajk.backup.shouldPerformBackup(false);
+    ajk.shouldTick(false);
+    ajk.backup.shouldPerformBackup(false);
 }
 
 ajk = {
@@ -24,6 +24,7 @@ ajk = {
             if (this.thread != null)
             {
                 clearInterval(this.thread);
+                this.thread = null;
             }
             if (!doBackup) { return; }
             ajk.log.info('Backing up export string every ' + this.frequncy + ' hours');
@@ -584,13 +585,10 @@ ajk = {
         productionDemandModifier: -2,
         oneShotModifier: -10,
 
-        allItems: {},
-        withinMaxResources: [],
-        outsideMaxResources: [],
+        data: {},
         capacityDemand: {},
         outputDemand: {},
-        itemWeight: {},
-        costData: {},
+
         priorityList: [],
         filteredPriorityList: [],
 
@@ -603,13 +601,9 @@ ajk = {
 
         reset: function()
         {
-            this.allItems = {};
-            this.withinMaxResources = [];
-            this.outsideMaxResources = [];
+            this.data = {}
             this.capacityDemand = {};
             this.outputDemand = {};
-            this.itemWeight = jQuery.extend({}, this.defaultItemWeight);
-            this.costData = {};
             this.priorityList = [];
             this.filteredPriorityList = [];
 
@@ -620,13 +614,17 @@ ajk = {
         {
             ajk.log.detail('  Determining time cost of producing ' + price.val + ' ' + price.name + 's');
             var productionData = jQuery.extend({}, price);
+            productionData.method = 'PerTick';
 
             var resource = gamePage.resPool.get(price.name);
-            if (!resource.unlocked) { return Infinity; }
+            if (!resource.unlocked)
+            {
+                productionData.time = Infinity;
+                return productionData;
+            }
 
             var minTicks = Math.max(0, (price.val - resource.value) / resource.perTickCached);
             ajk.log.detail('    Default per-tick production will take ' + minTicks + ' ticks');
-            productionData.method = 'PerTick';
             productionData.time = minTicks;
 
             if (resource.craftable && resource.name != 'wood')
@@ -697,8 +695,8 @@ ajk = {
             var costData = this.analyzeCostProduction(item.controller.getPrices(item.model));
             var modifier = Math.log(costData.time + 1);
             ajk.log.debug('It will be ' + costData.time + ' ticks until there are enough resources for ' + itemName + ' (modifier ' + modifier + ')');
-            this.itemWeight[itemName] += modifier;
-            this.costData[itemName] = costData;
+            this.data[itemName].weight += modifier;
+            this.data[itemName].costData = costData;
         },
 
         analyzeItems: function(items)
@@ -712,12 +710,17 @@ ajk = {
                 if (!mData.unlocked) { continue; }
                 if (mData.hasOwnProperty('researched') && mData.researched) { continue; }
 
-                this.allItems[itemName] = items[i];
-                if (!this.itemWeight.hasOwnProperty(itemName))
+                var defaultWeight = 0;
+                if (this.defaultItemWeight.hasOwnProperty(itemName))
                 {
-                    ajk.log.detail('Setting default weight for ' + itemName + ' to 0');
-                    this.itemWeight[itemName] = 0;
+                    defaultWeight = this.defaultItemWeight[itemName];
                 }
+
+                this.data[itemName] = {
+                    item: items[i],
+                    weight: defaultWeight,
+                    missingMaxResources: false
+                };
 
                 if (mData.hasOwnProperty('effects'))
                 {
@@ -745,7 +748,7 @@ ajk = {
                 {
                     // Favor one-shots
                     ajk.log.debug('Prioritizing ' + itemName + ' as a one-shot');
-                    this.itemWeight[itemName] += this.oneShotModifier;
+                    this.data[itemName].weight += this.oneShotModifier;
                 }
 
                 var missingMaxResources = false;
@@ -766,11 +769,7 @@ ajk = {
                 }
                 if (missingMaxResources)
                 {
-                    this.outsideMaxResources.push(items[i]);
-                }
-                else
-                {
-                    this.withinMaxResources.push(items[i]);
+                    this.data[itemName].missingMaxResources = true;
                 }
             }
         },
@@ -816,14 +815,18 @@ ajk = {
         analyzeResults: function()
         {
             // For every item that increases the storage capacity of a resource that's lacking in capacity, increase its priority
-            for (var resource in this.capacityDemand)
+            for (var itemKey in this.data)
             {
-                for (var itemKey in this.allItems)
+                for (var resource in this.capacityDemand)
                 {
-                    if (this.providesStorageFor(this.allItems[itemKey], resource))
+                    if (this.providesStorageFor(this.data[itemKey].item, resource))
                     {
                         ajk.log.debug('Increasing the priority of ' + itemKey + ' based on capacity demand for ' + resource);
-                        this.itemWeight[itemKey] += this.capacityDemandModifier;
+                        this.data[itemKey].weight += this.capacityDemandModifier;
+
+                        // Only apply the capacity demand bonus once for any given item
+                        // This prevents us from overindexing on things that provide storage for a whole bunch of things, like Warehouses
+                        break;
                     }
                 }
             }
@@ -831,25 +834,23 @@ ajk = {
             // For every item that produces a resource that's lacking in output, increase its priority
             for (var resource in this.outputDemand)
             {
-                for (var itemKey in this.allItems)
+                for (var itemKey in this.data)
                 {
-                    if (this.providesProductionFor(this.allItems[itemKey], resource))
+                    if (this.providesProductionFor(this.data[itemKey].item, resource))
                     {
                         ajk.log.debug('Increasing the priority of ' + itemKey + ' based on output demand for ' + resource);
-                        this.itemWeight[itemKey] += this.productionDemandModifier;
+                        this.data[itemKey].weight += this.productionDemandModifier;
                     }
                 }
             }
 
             // Organize the items in terms of priority
-            for (var itemName in this.itemWeight)
+            for (var itemName in this.data)
             {
                 var inserted = false;
                 for (var i = 0; i < this.priorityList.length; ++i)
                 {
-                    var thisWeight = this.itemWeight[this.priorityList[i]];
-                    var competingWeight = this.itemWeight[itemName];
-                    if (this.itemWeight[itemName] < this.itemWeight[this.priorityList[i]])
+                    if (this.data[itemName].weight < this.data[this.priorityList[i]].weight)
                     {
                         this.priorityList.splice(i, 0, itemName);
                         inserted = true;
@@ -862,7 +863,7 @@ ajk = {
             // Filter the priority list and build up the table of resource requirements
             for (var i = 0; i < this.priorityList.length; ++i)
             {
-                var costData = this.costData[this.priorityList[i]];
+                var costData = this.data[this.priorityList[i]].costData;
                 if (!ajk.resources.hasCompetition(costData))
                 {
                     ajk.log.detail('Added ' + this.priorityList[i] + ' to list of filtered items');
@@ -949,13 +950,13 @@ ajk = {
             for (var i = 0; i < ajk.analysis.filteredPriorityList.length; ++i)
             {
                 var priority = ajk.analysis.filteredPriorityList[i];
-                ajk.log.debug('Attempting to act on ' + priority + ' (weight ' + ajk.analysis.itemWeight[priority] + ')');
+                ajk.log.debug('Attempting to act on ' + priority + ' (weight ' + ajk.analysis.data[priority].weight + ')');
 
-                var costData = ajk.analysis.costData[priority];
+                var costData = ajk.analysis.data[priority].costData;
                 if (this.operateOnCostData(costData))
                 {
                     ajk.log.detail('Cost operations succeeded, acting');
-                    var item = ajk.analysis.allItems[priority];
+                    var item = ajk.analysis.data[priority].item;
                     if (item.controller.hasResources(item.model))
                     {
                         if (!ajk.simulate)
@@ -988,26 +989,48 @@ ajk = {
             this.analyze();
             this.operateOnPriority();
             ajk.resources.convert();
+            ajk.ui.refreshPriorityTable();
             var t1 = performance.now();
             ajk.log.debug('Tick executed in ' + (t1 - t0) + ' ms');
         }
     },
 
-    startTicking: function()
+    ui:
     {
-        this.stopTicking();
-        this.core.init();
-        this.log.info('Ticking every ' + this.tickFrequency + ' seconds');
-        this.tickThread = setInterval(function() { ajk.core.tick(); }, this.tickFrequency * 1000);
+        refreshPriorityTable: function()
+        {
+            var container = $('#priortyTable');
+            container.empty();
+            for (var i = 0; i < ajk.analysis.filteredPriorityList.length; ++i)
+            {
+                var itemKey = ajk.analysis.filteredPriorityList[i];
+                var itemWeight = ajk.analysis.data[itemKey].weight;
+                container.append('<tr><td>' + itemKey + '</td><td>' + itemWeight + '</td></tr>');
+            }
+        }
     },
 
-    stopTicking: function()
+    shouldTick: function(doTick)
     {
         if (this.tickThread != null)
         {
-            this.log.info('Stopping tick thread');
+            if (doTick)
+            {
+                this.log.info('Restarting tick thread');
+            }
+            else
+            {
+                this.log.info('Stopping tick thread');
+            }
             clearInterval(this.tickThread);
             this.tickThread = null;
+        }
+
+        if (doTick)
+        {
+            this.core.init();
+            this.log.info('Ticking every ' + this.tickFrequency + ' seconds');
+            this.tickThread = setInterval(function() { ajk.core.tick(); }, this.tickFrequency * 1000);
         }
     }
 }
@@ -1026,8 +1049,8 @@ var ajkMenu = `
         <input id="simulateToggle" type="checkbox" onclick="ajk.simulate = $('#simulateToggle')[0].checked;">
         <label for="simulateToggle">Simulate</label>
         <br/>
-        <input type="button" id="startAJKButton" value="Start" onclick="ajk.startTicking();" style="width:100px">
-        <input type="button" id="stopAJKButton" value="Stop" onclick="ajk.stopTicking();" style="width:100px">
+        <input id="tickToggle" type="checkbox" onclick="ajk.shouldTick($('#tickToggle')[0].checked);">
+        <label for="tickToggle">Ticking</label>
     </div>
     <br/>
     <input id="infoLogToggle" type="checkbox" onclick="ajk.log.infoEnabled = $('#infoLogToggle')[0].checked;">
@@ -1051,6 +1074,12 @@ var ajkMenu = `
         <br/>
         <input type="button" id="signin-button" value="Sign In" onclick="ajk.backup.handleSignInClick();" style="width:100px">
         <input type="button" id="signout-button" value="Sign Out" onclick="ajk.backup.handleSignOutClick();" style="width:100px">
+    </div>
+    <br/>
+    <div id="container">
+        <b>Weighted / Filtered Priorities</b>
+        <br/>
+        <table id="priorityTable"/>
     </div>
 </div>
 `;
