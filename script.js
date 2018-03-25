@@ -153,15 +153,15 @@ ajk = {
     log:
     {
         errorLevel: -1,
-        infoLevel:   0,
-        warnLevel:   1,
+        warnLevel:   0,
+        infoLevel:   1,
         debugLevel:  2,
         detailLevel: 3,
         traceLevel:  4,
 
         logLevel:    1,
 
-        detailedLogsOnSuccess: true,
+        detailedLogsOnSuccess: false,
         detailedLogsOnError: true,
 
         debugQueue: [],
@@ -194,7 +194,7 @@ ajk = {
         {
             if (this.detailedLogsOnError)
             {
-                flush(true);
+                this.flush(true);
             }
             this.logInternal(message, this.errorLevel);
         },
@@ -260,7 +260,7 @@ ajk = {
                         table.effectMap[effect] = resource;
 
                         // Update item map
-                        if (!table.itemMap.hasOwnProperty())
+                        if (!table.itemMap.hasOwnProperty(resource))
                         {
                             table.itemMap[resource] = [];
                         }
@@ -305,12 +305,19 @@ ajk = {
                 this.storage.resourceMap = {};
                 this.storage.itemMap = {};
 
+                ajk.log.debug('Rebuilding effect tables');
+
                 for (var i = 0; i < gamePage.bld.buildingsData.length; ++i)
                 {
-                    var bldData = gamePage.bld.buildingsData[i];
-                    for (var effectName in bldData.effects)
+                    var bldData = gamePage.bld.get(gamePage.bld.buildingsData[i].name);
+                    var effects = bldData.effects;
+                    if (bldData.hasOwnProperty('stage'))
                     {
-                        if (bldData.effects[effectName] == 0)
+                        effects = bldData.stages[bldData.stage].effects;
+                    }
+                    for (var effectName in effects)
+                    {
+                        if (effects[effectName] == 0)
                         {
                             ajk.log.detail('Ignoring effect ' + effectName + ' with zero-value for ' + bldData.name);
                         }
@@ -343,6 +350,12 @@ ajk = {
             return this.internal.storage.effectMap[effectName];
         },
 
+        getConsumersOfResource: function(resourceName)
+        {
+            if (!this.internal.consumption.itemMap.hasOwnProperty(resourceName)) { return []; }
+            return this.internal.consumption.itemMap[resourceName];
+        },
+
         getProducersOfResource: function(resourceName)
         {
             if (!this.internal.production.itemMap.hasOwnProperty(resourceName)) { return []; }
@@ -353,6 +366,32 @@ ajk = {
         {
             if (!this.internal.storage.itemMap.hasOwnProperty(resourceName)) { return []; }
             return this.internal.storage.itemMap[resourceName];
+        },
+
+        isProducerOf: function(itemKey, resourceName)
+        {
+            var producers = this.getProducersOfResource(resourceName);
+            for (var i = 0; i < producers.length; ++i)
+            {
+                if (producers[i] == itemKey)
+                {
+                    return true;
+                }
+            }
+            return false;
+        },
+
+        isConsumerOf: function(itemKey, resourceName)
+        {
+            var consumers = this.getConsumersOfResource(resourceName);
+            for (var i = 0; i < consumers.length; ++i)
+            {
+                if (consumers[i] == itemKey)
+                {
+                    return true;
+                }
+            }
+            return false;
         },
 
         init: function()
@@ -699,17 +738,46 @@ ajk = {
             return false;
         },
 
-        getBottleneckFor: function(costData)
+        getFlatCostList: function(costData)
         {
-            var highestCost = 0;
-            for (var i = 1; i < costData.prices.length; ++i)
+            var prices = [];
+            for (var i = 0; i < costData.prices.length; ++i)
             {
-                if (costData.prices[i].time > costData.prices[highestCost].time)
+                if (costData.prices[i].hasOwnProperty('dependencies'))
                 {
-                    highestCost = i;
+                    prices = prices.concat(this.getFlatCostList(costData.prices[i].dependencies));
+                }
+                else
+                {
+                    prices.push(costData.prices[i]);
                 }
             }
-            // TOOD - Finish this function
+            return prices;
+        },
+
+        getBottlenecksFor: function(costData)
+        {
+            var bottlenecks = [];
+            var flatList = this.getFlatCostList(costData);
+            for (var i = 0; i < flatList.length; ++i)
+            {
+                if (flatList[i].time == 0) { continue; }
+                var emplaced = false;
+                for (var j = 0; j < bottlenecks.length; ++j)
+                {
+                    if (flatList[i].time > bottlenecks[j].time)
+                    {
+                        bottlenecks.splice(i, 0, flatList[i]);
+                        emplaced = true;
+                        break;
+                    }
+                }
+                if (!emplaced)
+                {
+                    bottlenecks.push(flatList[i]);
+                }
+            }
+            return bottlenecks;
         },
 
         getProductionOf: function(resource)
@@ -878,8 +946,11 @@ ajk = {
     {
         reinforceTopPriority:
         {
+            topModifier: -5,
+            bottleneckModifier: -2,
+
             topPriority: null,
-            topModifier: -10,
+            bottlenecks: null,
 
             prepare: function()
             {
@@ -887,14 +958,18 @@ ajk = {
                 if (ajk.analysis.previousPriority.length == 0)
                 {
                     this.topPriority = null;
+                    this.bottlenecks = null;
                 }
                 else
                 {
                     this.topPriority = ajk.analysis.previousPriority[0];
+                    this.bottlenecks = ajk.resources.getBottlenecksFor(ajk.analysis.data[this.topPriority].costData);
+                    ajk.log.debug('Production of ' + this.topPriority + ' is bottlenecked on ' + this.bottlenecks.length + ' resources');
                 }
             },
             modifyItem: function(itemKey, item)
             {
+                if (this.topPriority == null) { return; }
                 if (itemKey == this.topPriority)
                 {
                     ajk.log.debug('Increasing weight of ' + itemKey + ' to reinforce the previous top priority');
@@ -902,7 +977,15 @@ ajk = {
                     return;
                 }
 
-                // TODO - Reward other items based on bottlenecks and demands
+                var currentMod = this.bottleneckModifier;
+                for (var i = 0; i < this.bottlenecks.length; ++i)
+                {
+                    if (ajk.cache.isProducerOf(this.bottlenecks[i].name))
+                    {
+                        ajk.log.debug('Increasing weight of ' + itemKey + ' by ' + currentMod + ' based on production of a bottlenecked resource (' + this.bottlenecks[i].name + ')');
+                    }
+                    currentMod = currentMod / 2;
+                }
             },
         },
 
@@ -917,13 +1000,27 @@ ajk = {
             },
             modifyItem: function(itemKey, item)
             {
+                for (var resource in this.weightedDemand)
+                {
+                    var mod = this.weightedDemand[resource];
+                    if (ajk.cache.isProducerOf(itemKey, resource))
+                    {
+                        ajk.log.debug('Increasing weight of ' + itemKey + ' by ' + mod + ' based on the demand for ' + resource);
+                        ajk.analysis.modifyWeight(itemKey, mod, true);
+                    }
+                    else if (ajk.cache.isConsumerOf(itemKey, resource))
+                    {
+                        ajk.log.debug('Decreasing weight of ' + itemKey + ' by ' + mod + ' based on the demand for ' + resource);
+                        ajk.analysis.modifyWeight(itemKey, -mod, true);
+                    }
+                }
             }
         }
     },
 
     analysis:
     {
-        oneShotModifier: -10,
+        oneShotModifier: -7,
         explorationModifier: -5,
 
         data: {},
@@ -940,8 +1037,8 @@ ajk = {
             'coalFurnace': -10,
 
             // Speculative
-            'geodesy': -5,
-            'oxidation': -2,
+            'geodesy': -10,
+            'oxidation': -5,
         },
 
         previousPriority: [],
@@ -1064,19 +1161,23 @@ ajk = {
                     productionData.dependencies = costData;
                 }
             }
-            var tradeData = ajk.trade.getTradeDataFor(price);
-            if (tradeData != null)
+
+            if (resource.name != 'catnip')
             {
-                ajk.log.trace('    Tradeable');
-                var costData = this.analyzeCostProduction(tradeData.prices);
-                if (costData.time < productionData.time)
+                var tradeData = ajk.trade.getTradeDataFor(price);
+                if (tradeData != null)
                 {
-                    ajk.log.trace('    Trading is more effective');
-                    productionData.time = costData.time;
-                    productionData.method = 'Trade';
-                    productionData.tradeRace = tradeData.race;
-                    productionData.trades = tradeData.trades;
-                    productionData.dependencies = costData;
+                    ajk.log.trace('    Tradeable');
+                    var costData = this.analyzeCostProduction(tradeData.prices);
+                    if (costData.time < productionData.time)
+                    {
+                        ajk.log.trace('    Trading is more effective');
+                        productionData.time = costData.time;
+                        productionData.method = 'Trade';
+                        productionData.tradeRace = tradeData.race;
+                        productionData.trades = tradeData.trades;
+                        productionData.dependencies = costData;
+                    }
                 }
             }
             return productionData;
@@ -1106,7 +1207,7 @@ ajk = {
             ajk.log.trace('Determining how to best produce ' + itemName + ' and how long it will take');
             var costData = this.analyzeCostProduction(item.controller.getPrices(item.model));
             var modifier = Math.log(costData.time + 1);
-            ajk.log.debug('It will be ' + costData.time + ' ticks until there are enough resources for ' + itemName + ' (modifier ' + modifier + ')');
+            ajk.log.detail('It will be ' + costData.time + ' ticks until there are enough resources for ' + itemName + ' (modifier ' + modifier + ')');
             this.modifyWeight(itemName, modifier);
             this.data[itemName].costData = costData;
         },
@@ -1340,7 +1441,7 @@ ajk = {
                             }
                             else
                             {
-                                ajk.log.info('Failed to unlock new race');
+                                ajk.log.error('Failed to unlock new race');
                             }
                             // TODO - Figure out why this function is called twice with different arguments every time we try to discover a new race
                             ajk.log.debugQueue.push(result);
@@ -1376,7 +1477,7 @@ ajk = {
                                 }
                                 else
                                 {
-                                    ajk.log.warn('Failed to purchase ' + priority);
+                                    ajk.log.error('Failed to purchase ' + priority);
                                 }
                             });
                         }
@@ -1456,7 +1557,7 @@ ajk = {
                 appendData += '<td style="text-align:right">' + itemData.weight.toFixed(2) + '</td>';
                 if (itemData.adjustment != 0)
                 {
-                    appendData += '<td style="text-align:right"><span style="color:' + (itemData.adjustment > 0 ? 'red' : 'green') + '">' + itemData.adjustment + '</span></td>';
+                    appendData += '<td style="text-align:right"><span style="color:' + (itemData.adjustment > 0 ? 'red' : 'green') + '">' + itemData.adjustment.toFixed(2) + '</span></td>';
                 }
                 appendData += '</tr>';
                 container.append(appendData);
@@ -1494,6 +1595,15 @@ ajk = {
         }
     },
 
+    simulateTick: function()
+    {
+        this.log.info('Simulating 1 tick to populate previous values');
+        var pSimulate = ajk.simulate;
+        ajk.simulate = true;
+        ajk.core.tick();
+        ajk.simulate = pSimulate;
+    },
+
     shouldTick: function(doTick)
     {
         if (this.tickThread != null)
@@ -1513,6 +1623,7 @@ ajk = {
         if (doTick)
         {
             this.log.info('Ticking every ' + this.tickFrequency + ' seconds');
+            this.simulateTick();
             this.tickThread = setInterval(function() { ajk.core.tick(); }, this.tickFrequency * 1000);
         }
     }
@@ -1538,8 +1649,9 @@ var ajkMenu = `
     <br/>
     <label for="logLevelSelect">Log Level</label>
     <select id="logLevelSelect" onchange="ajk.log.updateLevel()">
-        <option value="0">Info</option>
-        <option value="1">Warn</option>
+        <option value="-1">Errors Only</option>
+        <option value="0">Errors and Warnings</option>
+        <option value="1">Info</option>
         <option value="2">Debug</option>
         <option value="3">Detail</option>
         <option value="4">Trace</option>
@@ -1547,6 +1659,9 @@ var ajkMenu = `
     <br/>
     <input id="detailSuccessToggle" type="checkbox" onclick="ajk.log.detailedLogsOnSuccess = $('#detailSuccessToggle')[0].checked;">
     <label for="detailSuccessToggle">Detailed Output On Success</label>
+    <br/>
+    <input id="detailErrorToggle" type="checkbox" onclick="ajk.log.detailedLogsOnError = $('#detailErrorToggle')[0].checked;">
+    <label for="detailErrorToggle">Detailed Output On Errors</label>
     <br/>
     <br/>
     <div id="container">
@@ -1582,4 +1697,7 @@ var ajkMenu = `
 $("#leftColumn").append(ajkMenu);
 $("#simulateToggle")[0].checked = ajk.simulate;
 $("#detailSuccessToggle")[0].checked = ajk.log.detailedLogsOnSuccess;
+$("#detailErrorToggle")[0].checked = ajk.log.detailedLogsOnError;
 $("#logLevelSelect")[0].value = ajk.log.logLevel;
+
+ajk.simulateTick();
