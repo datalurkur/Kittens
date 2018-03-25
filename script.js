@@ -150,25 +150,61 @@ ajk = {
         }
     },
 
+    log:
+    {
+        infoLevel:   0,
+        warnLevel:   1,
+        debugLevel:  2,
+        detailLevel: 3,
+        traceLevel:  4,
+
+        logLevel:    1,
+
+        detailedLogsOnSuccess: true,
+
+        debugQueue: [],
+
+        logQueue: [],
+
+        logInternal: function(message, level)
+        {
+            this.logQueue.push([message, level]);
+        },
+
+        flush: function()
+        {
+            for (var i = 0; i < this.logQueue.length; ++i)
+            {
+                var message = this.logQueue[i][0];
+                var level = this.logQueue[i][1];
+                if (this.logLevel < level) { continue; }
+                console.log(message);
+            }
+            this.logQueue = [];
+        },
+
+        trace:  function(message) { this.logInternal(message, this.traceLevel);  },
+        detail: function(message) { this.logInternal(message, this.detailLevel); },
+        debug:  function(message) { this.logInternal(message, this.debugLevel);  },
+        warn:   function(message) { this.logInternal(message, this.warnLevel);   },
+        info:   function(message) { this.logInternal(message, this.infoLevel);   },
+
+        updateLevel: function()
+        {
+            var newValue = parseInt($('#logLevelSelect')[0].value);
+            this.logLevel = newValue;
+        }
+    },
+
     cache:
     {
         craftDependencies: {},
         consumptionEffects: {},
         productionEffects: {},
         storageEffects: {},
-        productionOutput:
-        {
-            'energy': function() { return gamePage.resPool.getEnergyDelta(); }
-        },
-
-        getProductionOf: function(resource)
-        {
-            if (this.productionOutput.hasOwnProperty(resource))
-            {
-                return this.productionOutput[resource]();
-            }
-            return gamePage.resPool.get(resource).perTickCached;
-        },
+        producers: {},
+        productionResources: {},
+        consumptionResources: {},
 
         getCraftDependencies: function(resource)
         {
@@ -197,13 +233,28 @@ ajk = {
             }
         },
 
-        addProductionEffect: function(effectName, resourceName)
+        addProductionEffect: function(producer, effectName, resourceName)
         {
+            if (!this.producers.hasOwnProperty(effectName))
+            {
+                this.producers[resourceName] = [];
+            }
             if (!this.productionEffects.hasOwnProperty(resourceName))
             {
                 this.productionEffects[resourceName] = [];
             }
+            this.producers[resourceName].push(producer);
+            this.productionResources[effectName] = resourceName;
+            for (var i = 0; i < this.productionEffects[resourceName].length; ++i)
+            {
+                if (this.productionEffects[resourceName][i] == effectName) { return; }
+            }
             this.productionEffects[resourceName].push(effectName);
+        },
+
+        addConsumptionEffect: function(effectName, resourceName)
+        {
+            this.consumptionEffects[effectName] = resourceName;
         },
 
         addStorageEffect: function(effectName, resourceName)
@@ -220,18 +271,21 @@ ajk = {
             this.consumptionEffects = {};
             this.productionEffects = {};
             this.storageEffects = {};
+            this.producers = {};
 
             var productionPostfixes = [
                 'PerTickAutoprod',
                 'PerTickBase',
                 'PerTickProd',
                 'Production',
+                'DemandRatio',
+                'RatioGlobal',
                 'Ratio',
             ];
             var consumptionPostfixes = [
-                'PerTick',
-                'PerTickCon',
                 'PerTickConsumption',
+                'PerTickCon',
+                'PerTick',
                 'Consumption',
             ];
             var storagePostfixes = [
@@ -247,7 +301,7 @@ ajk = {
                         var index = effectName.indexOf(productionPostfixes[j]);
                         if (index != -1)
                         {
-                            this.addProductionEffect(effectName, effectName.substring(0, index));
+                            this.addProductionEffect(gamePage.bld.buildingsData[i].name, effectName, effectName.substring(0, index));
                             matched = true;
                             break;
                         }
@@ -260,7 +314,7 @@ ajk = {
                         var index = effectName.indexOf(consumptionPostfixes[j]);
                         if (index != -1)
                         {
-                            this.consumptionEffects[effectName] = effectName.substring(0, index);
+                            this.addConsumptionEffect(effectName, effectName.substring(0, index));
                             matched = true;
                             break;
                         }
@@ -279,7 +333,7 @@ ajk = {
                     }
                     if (matched) { continue; }
 
-                    ajk.log.debug('Found no matching effect definition for ' + effectName + ' in ' + gamePage.bld.buildingsData[i].name);
+                    ajk.log.detail('Found no matching effect definition for ' + effectName + ' in ' + gamePage.bld.buildingsData[i].name);
                 }
             }
         },
@@ -291,32 +345,41 @@ ajk = {
         }
     },
 
-    log:
+    customItems:
     {
-        detailEnabled: false,
-        debugEnabled: false,
-        warnEnabled: true,
-        infoEnabled: true,
+        tradeShip: function()
+        {
+            ajk.ui.switchToTab('Workshop');
+            var gameTS = gamePage.workshop.getCraft('ship');
+            var itemData = {
+                controller:
+                {
+                    hasResources: function()
+                    {
+                        return (gamePage.workshop.getCraftAllCount('ship') > 0);
+                    },
+                    buyItem: function()
+                    {
+                        if (!ajk.simulate)
+                        {
+                            gamePage.workshop.craft('ship', 1);
+                        }
+                    }
+                },
+                model:
+                {
+                    metadata: gameTS
+                }
+            };
+            ajk.ui.switchToTab(null);
+            return itemData;
+        },
 
-        detail: function(message)
+        get: function()
         {
-            if (!this.detailEnabled) { return; }
-            console.log(message);
-        },
-        debug: function(message)
-        {
-            if (!this.debugEnabled) { return; }
-            console.log(message);
-        },
-        warn: function(message)
-        {
-            if (!this.warnEnabled) { return; }
-            console.log(message);
-        },
-        info: function(message)
-        {
-            if (!this.infoEnabled) { return; }
-            console.log(message);
+            return [
+                this.tradeShip()
+            ];
         }
     },
 
@@ -396,7 +459,7 @@ ajk = {
             }
             var numTradesRequired = Math.ceil(raceAmount / price.val);
             prices.push({
-                name: 'catpower',
+                name: 'manpower',
                 val: numTradesRequired * 50
             });
             prices.push({
@@ -409,6 +472,112 @@ ajk = {
                 race: chosenRace,
                 trades: numTradesRequired
             };
+        },
+
+        explorationRequirement: function()
+        {
+            if (gamePage.resPool.get('manpower').maxValue < 1000)
+            {
+                // TODO - Be more accurate about choosing buildings that provide max catpower
+                ajk.log.detail('Waiting on max catpower for race discovery');
+                return ['hut', 'logHouse'];
+            }
+            for (var i = 0; i < gamePage.diplomacy.races.length; ++i)
+            {
+                var race = gamePage.diplomacy.races[i];
+                if (race.unlocked || race.name == 'leviathans') { continue; }
+                if (race.name == 'lizards' || race.name == 'griffins' || race.name == 'sharks')
+                {
+                    // TODO - Figure out how to get at metaphysics upgrades and check for diplomacy researched (reduces year to 1)
+                    if ((gamePage.resPool.get('karma').value > 0 && gamePage.calendar.year >= 5) ||
+                        (gamePage.calendar.year >= 20))
+                    {
+                        ajk.log.detail(race.name + ' are available for discovery');
+                        return [];
+                    }
+                    else
+                    {
+                        ajk.log.detail('Waiting on time to pass to discover ' + race.name);
+                        return null;
+                    }
+                }
+                else if (race.name == 'nagas')
+                {
+                    var culture = gamePage.resPool.get('culture');
+                    if (culture.maxValue < 1500)
+                    {
+                        // TODO - Be more accurate about choosing buildings that provide max culture
+                        ajk.log.detail('Waiting on max culture to discover nagas');
+                        return ['library', 'academy', 'amphitheatre', 'chapel', 'temple'];
+                    }
+                    else if (culture.value < 1500)
+                    {
+                        // TODO - Be more accurate about choosing buildings that provide culture
+                        ajk.log.detail('Waiting on culture to discover nagas');
+                        ajk.resources.accumulateSimpleDemand('culture', 1500);
+                        return ['amphitheatre', 'chapel', 'temple'];
+                    }
+                    else
+                    {
+                        ajk.log.detail(race.name + ' are available for discovery');
+                        return [];
+                    }
+                }
+                else if (race.name == 'zebras')
+                {
+                    if (gamePage.resPool.get('ship').value > 0)
+                    {
+                        ajk.log.detail(race.name + ' are available for discovery');
+                        return [];
+                    }
+                    else
+                    {
+                        ajk.log.detail('Waiting on trade ships to discover ' + race.name);
+                        return ['ship'];
+                    }
+                }
+                else if (race.name == 'spiders')
+                {
+                    if (gamePage.resPool.get('ship').value < 100)
+                    {
+                        ajk.log.detail('Waiting on trade ships to discover ' + race.name);
+                        return ['ship'];
+                    }
+                    else if (gamePage.resPool.get('science').maxValue < 125000)
+                    {
+                        // TODO - Be more accurate about choosing buildings that provide max science
+                        ajk.log.detail('Waiting on max science to discover ' + race.name);
+                        return ['library', 'academy', 'observatory', 'biolab'];
+                    }
+                    else
+                    {
+                        ajk.log.detail(race.name + ' are available for discovery');
+                        return [];
+                    }
+                }
+                else if (race.name == 'dragons')
+                {
+                    if (gamePage.science.get('nuclearFission').researched)
+                    {
+                        ajk.log.detail(race.name + ' are available for discovery');
+                        return [];
+                    }
+                    else
+                    {
+                        ajk.log.detail('Waiting on nuclear fission to discover ' + race.name);
+                        return ['nuclearFission'];
+                    }
+                }
+                else if (race.name == 'leviathans')
+                {
+                    if (gamePage.religion.getZU('blackPyramid').val == 0)
+                    {
+                        ajk.log.detail('Waiting on black pyramids for the appearance of ' + race.name);
+                        return ['blackPyramid'];
+                    }
+                }
+            }
+            return null;
         },
 
         tradeWith: function(race, trades)
@@ -451,7 +620,7 @@ ajk = {
             }
             else
             {
-                ajk.log.detail('Crafting ' + crafts + ' ' + resource + 's');
+                ajk.log.detail('Crafting ' + crafts + ' ' + resource);
                 if (!ajk.simulate)
                 {
                     gamePage.workshop.craft(resource, crafts);
@@ -465,6 +634,7 @@ ajk = {
     {
         catnipBufferFixed: 5000,
         catnipBufferRatio: 0.1,
+        catpowerConversionRatio: 0.75,
         conversionRatio: 0.1,
         conversionMaxRatio: 0.97,
         conversions:
@@ -477,7 +647,58 @@ ajk = {
             'titanium': 'alloy',
             'oil': 'kerosene',
         },
+        nontangible:
+        {
+            'happiness': true,
+            'unhappiness': true,
+            'learn': true,
+            'magnetoBoost': true,
+            'refine': true,
+            'craft': true,
+            'production': true,
+            'trade': true,
+            'standing': true,
+            'resStatis': true
+        },
+
         demand: {},
+        previousDemand: {},
+
+        productionOutput:
+        {
+            'energy': function() { return gamePage.resPool.getEnergyDelta(); }
+        },
+
+        available: function(resourceName)
+        {
+            var baseResource = gamePage.resPool.get(resourceName);
+            if (baseResource.unlocked) { return true; }
+            if (baseResource.craftable)
+            {
+                var craft = gamePage.workshop.getCraft(resourceName);
+                for (var i = 0; i < craft.prices.length; ++i)
+                {
+                    if (!this.available(craft.prices[i].name)) { return false; }
+                }
+                return true;
+            }
+            return false;
+        },
+
+        getProductionOf: function(resource)
+        {
+            if (this.productionOutput.hasOwnProperty(resource))
+            {
+                return this.productionOutput[resource]();
+            }
+            return gamePage.resPool.get(resource).perTickCached;
+        },
+
+        reset: function()
+        {
+            this.previousDemand = jQuery.extend({}, this.demand);
+            this.demand = {};
+        },
 
         getCraftCost: function(craft, resource)
         {
@@ -485,6 +706,15 @@ ajk = {
             {
                 if (craft.prices[i].name == resource) { return craft.prices[i].val; }
             }
+        },
+
+        accumulateSimpleDemand: function(resource, amount)
+        {
+            if (!this.demand.hasOwnProperty(resource))
+            {
+                this.demand[resource] = 0;
+            }
+            this.demand[resource] = amount;
         },
 
         accumulateDemand: function(costData)
@@ -495,19 +725,30 @@ ajk = {
                 {
                     this.accumulateDemand(costData.prices[i].dependencies);
                 }
-                if (!this.demand.hasOwnProperty(costData.prices[i].name))
-                {
-                    this.demand[costData.prices[i].name] = 0;
-                }
-                this.demand[costData.prices[i].name] += costData.prices[i].val;
+                this.accumulateSimpleDemand(costData.prices[i].name, costData.prices[i].val);
             }
+        },
+
+        complexityOfPreviousDemand: function()
+        {
+            return Object.keys(this.previousDemand).length;
+        },
+
+        previouslyInDemand: function(resourceName)
+        {
+            return this.previousDemand.hasOwnProperty(resourceName);
+        },
+
+        inDemand: function(resourceName)
+        {
+            return this.demand.hasOwnProperty(resourceName);
         },
 
         hasCompetition: function(costData)
         {
             for (var i = 0; i < costData.prices.length; ++i)
             {
-                if (this.demand.hasOwnProperty(costData.prices[i].name)) { return true; }
+                if (this.inDemand(costData.prices[i].name)) { return true; }
                 if (costData.prices[i].hasOwnProperty('dependencies'))
                 {
                     if (this.hasCompetition(costData.prices[i].dependencies)) { return true; }
@@ -535,7 +776,7 @@ ajk = {
                     var craft = gamePage.workshop.getCraft(conversion.name);
                     var craftCost = this.getCraftCost(craft, rName);
                     var numCrafts = Math.ceil(amountToConvert / craftCost);
-                    ajk.log.debug('Converting ' + amountToConvert + ' ' + rName + 's into ' + craft.name + 's');
+                    ajk.log.debug('Converting ' + amountToConvert + ' ' + rName + 's into ' + craft.name);
                     if (!ajk.simulate)
                     {
                         gamePage.workshop.craft(craft.name, numCrafts);
@@ -544,9 +785,9 @@ ajk = {
             }
 
             var catPower = gamePage.resPool.get('manpower');
-            if (catPower.unlocked && catPower.value / catPower.maxValue >= this.conversionMaxRatio)
+            if (catPower.unlocked && catPower.value / catPower.maxValue >= this.conversionMaxRatio && !ajk.resources.inDemand('manpower'))
             {
-                var numHunts = Math.ceil(catPower.maxValue * this.conversionRatio / 100);
+                var numHunts = Math.ceil(catPower.maxValue * this.catpowerConversionRatio / 100);
                 ajk.log.debug('Sending hunters ' + numHunts + ' times');
                 if (!ajk.simulate)
                 {
@@ -584,6 +825,11 @@ ajk = {
         capacityDemandModifier: -2,
         productionDemandModifier: -2,
         oneShotModifier: -10,
+        explorationModifier: -5,
+        demandModifier: -3,
+        consumptionDemandModifier: 2,
+        reinforcementModifier: -0.5,
+        redundancyModifier: 1,
 
         data: {},
         capacityDemand: {},
@@ -592,45 +838,108 @@ ajk = {
         priorityList: [],
         filteredPriorityList: [],
 
-        defaultItemWeight:
+        shouldExplore: false,
+
+        defaultItemWeight: {
+            'deepMining': -10,
+            'coalFurnace': -10,
+
+            // Speculative
+            'geodesy': -5,
+            'oxidation': -2,
+        },
+
+        previousPriority: [],
+
+        modifyWeight: function(itemName, modifier, adjustment)
         {
-            'field': -10,
-            'hut': -10,
-            'logHouse': -10,
+            if (typeof modifier === 'undefined' || modifier == NaN)
+            {
+                ajk.log.warn('Item weight being modified by a bad number');
+                return;
+            }
+            if (!this.data.hasOwnProperty(itemName))
+            {
+                this.data[itemName] = {};
+            }
+            if (!this.data[itemName].hasOwnProperty('weight'))
+            {
+                if (this.defaultItemWeight.hasOwnProperty(itemName))
+                {
+                    this.data[itemName].weight = this.defaultItemWeight[itemName];
+                }
+                else
+                {
+                    this.data[itemName].weight = 0;
+                }
+                this.data[itemName].adjustment = 0;
+            }
+            this.data[itemName].weight += modifier;
+            if (typeof adjustment !== 'undefined' && adjustment)
+            {
+                this.data[itemName].adjustment += modifier;
+            }
         },
 
         reset: function()
         {
+            this.previousPriority = this.filteredPriorityList.slice(0);
+
             this.data = {}
             this.capacityDemand = {};
             this.outputDemand = {};
             this.priorityList = [];
             this.filteredPriorityList = [];
+            this.shouldExplore = false;
 
-            ajk.resources.demand = {};
+            ajk.resources.reset();
+        },
+
+        preanalysis: function()
+        {
+            var explorationRequirement = ajk.trade.explorationRequirement();
+            if (explorationRequirement != null)
+            {
+                if (explorationRequirement.length > 0)
+                {
+                    for (var i = 0; i < explorationRequirement.length; ++i)
+                    {
+                        ajk.log.detail('Modifying the weight of ' + explorationRequirement[i] + ' to account for exploration requirements');
+                        this.modifyWeight(explorationRequirement[i], this.explorationModifier, true);
+                    }
+                }
+                else
+                {
+                    ajk.log.detail('New races are available for discovery');
+                    this.shouldExplore = true;
+                }
+            }
         },
 
         analyzeResourceProduction: function(price)
         {
-            ajk.log.detail('  Determining time cost of producing ' + price.val + ' ' + price.name + 's');
+            ajk.log.trace('  Determining time cost of producing ' + price.val + ' ' + price.name);
             var productionData = jQuery.extend({}, price);
-            productionData.method = 'PerTick';
 
             var resource = gamePage.resPool.get(price.name);
-            if (!resource.unlocked)
+            if (resource.unlocked)
             {
-                productionData.time = Infinity;
-                return productionData;
+                var minTicks = Math.max(0, (price.val - resource.value) / resource.perTickCached);
+                ajk.log.trace('    Default per-tick production will take ' + minTicks + ' ticks');
+                productionData.method = 'PerTick';
+                productionData.time = minTicks;
             }
-
-            var minTicks = Math.max(0, (price.val - resource.value) / resource.perTickCached);
-            ajk.log.detail('    Default per-tick production will take ' + minTicks + ' ticks');
-            productionData.time = minTicks;
+            else
+            {
+                ajk.log.trace('    ' + price.name + ' is locked, perhaps we can craft it...');
+                productionData.method = 'Locked';
+                productionData.time = Infinity;
+            }
 
             if (resource.craftable && resource.name != 'wood')
             {
                 var numCraftsRequired = Math.ceil(price.val / (1 + gamePage.getResCraftRatio(price.name)));
-                ajk.log.detail('    Craftable in ' + numCraftsRequired + ' crafts');
+                ajk.log.trace('    Craftable in ' + numCraftsRequired + ' crafts');
 
                 var craftPrices = gamePage.workshop.getCraft(price.name).prices;
                 var modifiedCraftPrices = [];
@@ -645,7 +954,7 @@ ajk = {
                 var costData = this.analyzeCostProduction(craftPrices);
                 if (costData.time < productionData.time)
                 {
-                    ajk.log.detail('    Crafting is more effective');
+                    ajk.log.trace('    Crafting is more effective');
                     productionData.time = costData.time;
                     productionData.method = 'Craft';
                     productionData.craftAmount = numCraftsRequired;
@@ -655,11 +964,11 @@ ajk = {
             var tradeData = ajk.trade.getTradeDataFor(price);
             if (tradeData != null)
             {
-                ajk.log.detail('    Tradeable');
+                ajk.log.trace('    Tradeable');
                 var costData = this.analyzeCostProduction(tradeData.prices);
                 if (costData.time < productionData.time)
                 {
-                    ajk.log.detail('    Trading is more effective');
+                    ajk.log.trace('    Trading is more effective');
                     productionData.time = costData.time;
                     productionData.method = 'Trade';
                     productionData.tradeRace = tradeData.race;
@@ -691,11 +1000,11 @@ ajk = {
         adjustItemPriceRatio: function(item)
         {
             var itemName = item.model.metadata.name;
-            ajk.log.detail('Determining how to best produce ' + itemName + ' and how long it will take');
+            ajk.log.trace('Determining how to best produce ' + itemName + ' and how long it will take');
             var costData = this.analyzeCostProduction(item.controller.getPrices(item.model));
             var modifier = Math.log(costData.time + 1);
             ajk.log.debug('It will be ' + costData.time + ' ticks until there are enough resources for ' + itemName + ' (modifier ' + modifier + ')');
-            this.data[itemName].weight += modifier;
+            this.modifyWeight(itemName, modifier);
             this.data[itemName].costData = costData;
         },
 
@@ -710,17 +1019,12 @@ ajk = {
                 if (!mData.unlocked) { continue; }
                 if (mData.hasOwnProperty('researched') && mData.researched) { continue; }
 
-                var defaultWeight = 0;
-                if (this.defaultItemWeight.hasOwnProperty(itemName))
+                if (!this.data.hasOwnProperty(itemName))
                 {
-                    defaultWeight = this.defaultItemWeight[itemName];
+                    this.data[itemName] = {};
                 }
-
-                this.data[itemName] = {
-                    item: items[i],
-                    weight: defaultWeight,
-                    missingMaxResources: false
-                };
+                this.data[itemName].item = items[i];
+                this.data[itemName].missingMaxResources = false;
 
                 if (mData.hasOwnProperty('effects'))
                 {
@@ -729,15 +1033,16 @@ ajk = {
                     {
                         if (!ajk.cache.consumptionEffects.hasOwnProperty(effectKey)) { continue; }
                         var consumedResource = ajk.cache.consumptionEffects[effectKey];
-                        if (ajk.cache.getProductionOf(consumedResource) - mData.effects[effectKey] < 0)
+                        if (ajk.resources.getProductionOf(consumedResource) - mData.effects[effectKey] <= 0)
                         {
+                            ajk.log.detail('Production of ' + consumedResource + ' does not meet the requirements for another ' + itemName);
                             overConsumption = true;
                             outputDemand[consumedResource] = true;
                         }
                     }
                     if (overConsumption)
                     {
-                        outsideMaxResources.push(item);
+                        this.data[itemName].missingMaxResources = true;
                         continue;
                     }
                 }
@@ -748,7 +1053,7 @@ ajk = {
                 {
                     // Favor one-shots
                     ajk.log.debug('Prioritizing ' + itemName + ' as a one-shot');
-                    this.data[itemName].weight += this.oneShotModifier;
+                    this.modifyWeight(itemName, this.oneShotModifier, true);
                 }
 
                 var missingMaxResources = false;
@@ -756,7 +1061,7 @@ ajk = {
                 for (var j = 0; j < prices.length; ++j)
                 {
                     var resource = gamePage.resPool.get(prices[j].name);
-                    if (!resource.unlocked)
+                    if (!ajk.resources.available(prices[j].name))
                     {
                         missingMaxResources = true;
                     }
@@ -779,7 +1084,6 @@ ajk = {
             if (!item.model.hasOwnProperty('metadata') || !item.model.metadata.hasOwnProperty('effects')) { return false; }
             if (!ajk.cache.storageEffects.hasOwnProperty(resource))
             {
-                ajk.log.debug('Failed to find matching storage property for ' + resource);
                 return false;
             }
             var storageEffects = ajk.cache.storageEffects[resource];
@@ -798,7 +1102,6 @@ ajk = {
             if (!item.model.hasOwnProperty('metadata') || !item.model.metadata.hasOwnProperty('effects')) { return false; }
             if (!ajk.cache.productionEffects.hasOwnProperty(resource))
             {
-                ajk.log.debug('Failed to find matching production property for ' + resource);
                 return false;
             }
             var productionEffects = ajk.cache.productionEffects[resource];
@@ -812,67 +1115,157 @@ ajk = {
             return false;
         },
 
-        analyzeResults: function()
+        providesUnrequestedProduction: function(item)
         {
-            // For every item that increases the storage capacity of a resource that's lacking in capacity, increase its priority
-            for (var itemKey in this.data)
+            if (!item.model.hasOwnProperty('metadata') || !item.model.metadata.hasOwnProperty('effects')) { return null; }
+            for (var effectName in item.model.metadata.effects)
             {
-                for (var resource in this.capacityDemand)
+                if (ajk.cache.productionResources.hasOwnProperty(effectName))
                 {
-                    if (this.providesStorageFor(this.data[itemKey].item, resource))
+                    var resource = ajk.cache.productionResources[effectName];
+                    if (ajk.resources.nontangible.hasOwnProperty(resource)) { continue; }
+                    if (!ajk.resources.previouslyInDemand(resource))
                     {
-                        ajk.log.debug('Increasing the priority of ' + itemKey + ' based on capacity demand for ' + resource);
-                        this.data[itemKey].weight += this.capacityDemandModifier;
-
-                        // Only apply the capacity demand bonus once for any given item
-                        // This prevents us from overindexing on things that provide storage for a whole bunch of things, like Warehouses
-                        break;
+                        // TODO - Figure out via observation what this does to energy production problems
+                        return resource;
                     }
                 }
             }
+            return null;
+        },
 
-            // For every item that produces a resource that's lacking in output, increase its priority
-            for (var resource in this.outputDemand)
+        consumes: function(item, resource)
+        {
+
+            if (!item.model.hasOwnProperty('metadata') || !item.model.metadata.hasOwnProperty('effects')) { return false; }
+            for (var effectName in item.model.metadata.effects)
             {
-                for (var itemKey in this.data)
+                if (ajk.cache.consumptionEffects.hasOwnProperty(effectName) && ajk.cache.consumptionEffects[effectName] == resource) { return true; }
+            }
+            return false;
+        },
+
+        analyzeResults: function()
+        {
+            for (var itemKey in this.data)
+            {
+                // If this item increases the storage capacity of a resource that's lacking in capacity, increase its priority
+                if (!this.data[itemKey].hasOwnProperty('item')) { continue; }
+                var item = this.data[itemKey].item;
+
+                var prioritized = false;
+
+                for (var resource in this.capacityDemand)
                 {
-                    if (this.providesProductionFor(this.data[itemKey].item, resource))
+                    if (this.providesStorageFor(item, resource))
+                    {
+                        ajk.log.debug('Increasing the priority of ' + itemKey + ' based on capacity demand for ' + resource);
+                        this.modifyWeight(itemKey, this.capacityDemandModifier, true);
+                        prioritized = true;
+                        break;
+                    }
+                }
+
+                for (var resource in ajk.resources.previousDemand)
+                {
+                    if (this.providesProductionFor(item, resource))
+                    {
+                        // If this item produces a resource that was previously in demand, increase its priority
+                        ajk.log.debug('Increasing the priority of ' + itemKey + ' based on previous demand for ' + resource);
+                        this.modifyWeight(itemKey, this.demandModifier, true);
+                        prioritized = true;
+                        break;
+                    }
+                    else if (this.consumes(item, resource))
+                    {
+                        // If this item consumes a resource that was previously in demand, decrease its priority
+                        ajk.log.debug('Decreasing the priority of ' + itemKey + ' based on previous demand for ' + resource);
+                        this.modifyWeight(itemKey, this.consumptionDemandModifier, true);
+                        break;
+                    }
+                }
+
+                // If this item produces a resource that's lacking in output, increase its priority
+                for (var resource in this.outputDemand)
+                {
+                    if (this.providesProductionFor(item, resource))
                     {
                         ajk.log.debug('Increasing the priority of ' + itemKey + ' based on output demand for ' + resource);
-                        this.data[itemKey].weight += this.productionDemandModifier;
+                        this.modifyWeight(itemKey, this.productionDemandModifier, true);
+                        prioritized = true;
+                    }
+                }
+
+                // If this item was previously prioritized, increase its priority
+                for (var i = 0; i < this.previousPriority.length; ++i)
+                {
+                    if (itemKey == this.previousPriority[i])
+                    {
+                        ajk.log.debug('Increasing the priority of ' + itemKey + ' based on previous priority');
+                        this.modifyWeight(itemKey, this.reinforcementModifier, true);
+                        break;
+                    }
+                }
+
+
+                if (ajk.resources.complexityOfPreviousDemand() > 0 && !prioritized)
+                {
+                    // If this item produces a resource that was not previously in demand, decrease its priority
+                    var redundantProduction = this.providesUnrequestedProduction(item);
+                    if (redundantProduction != null)
+                    {
+                        ajk.log.debug('Decreasing the priority of ' + itemKey + ' based on unrequested resource production of ' + redundantProduction);
+                        this.modifyWeight(itemKey, this.redundancyModifier, true);
                     }
                 }
             }
 
             // Organize the items in terms of priority
-            for (var itemName in this.data)
+            for (var itemKey in this.data)
             {
+                if (!this.data[itemKey].hasOwnProperty('item')) { continue; }
+
                 var inserted = false;
                 for (var i = 0; i < this.priorityList.length; ++i)
                 {
-                    if (this.data[itemName].weight < this.data[this.priorityList[i]].weight)
+                    if (this.data[itemKey].weight < this.data[this.priorityList[i]].weight)
                     {
-                        this.priorityList.splice(i, 0, itemName);
+                        this.priorityList.splice(i, 0, itemKey);
                         inserted = true;
                         break;
                     }
                 }
-                if (!inserted) { this.priorityList.push(itemName); }
+                if (!inserted) { this.priorityList.push(itemKey); }
             }
+
+            // Account for exploration costs
+            if (this.shouldExplore)
+            {
+                ajk.log.detail('Accounting for catpower demand for exploration');
+                ajk.resources.accumulateSimpleDemand('manpower', 1000);
+            }
+
+            // TODO - Include analysis for tradepost weight based on demand for traded products
 
             // Filter the priority list and build up the table of resource requirements
             for (var i = 0; i < this.priorityList.length; ++i)
             {
+                if (this.data[this.priorityList[i]].missingMaxResources)
+                {
+                    ajk.log.trace('Filtered out ' + this.priorityList[i] + ' due to max resource capacity');
+                    continue;
+                }
+
                 var costData = this.data[this.priorityList[i]].costData;
                 if (!ajk.resources.hasCompetition(costData))
                 {
-                    ajk.log.detail('Added ' + this.priorityList[i] + ' to list of filtered items');
+                    ajk.log.trace('Added ' + this.priorityList[i] + ' to list of filtered items');
                     this.filteredPriorityList.push(this.priorityList[i]);
                     ajk.resources.accumulateDemand(costData);
                 }
                 else
                 {
-                    ajk.log.detail('Filtered out ' + this.priorityList[i] + ' due to resource competition');
+                    ajk.log.trace('Filtered out ' + this.priorityList[i] + ' due to resource competition');
                 }
             }
         },
@@ -884,6 +1277,8 @@ ajk = {
         scienceTab: gamePage.tabs[2],
         workshopTab: gamePage.tabs[3],
 
+        successes: 0,
+
         init: function()
         {
             ajk.cache.init();
@@ -892,16 +1287,27 @@ ajk = {
         analyze: function()
         {
             ajk.analysis.reset();
+            ajk.analysis.preanalysis();
+
+            ajk.analysis.analyzeItems(ajk.customItems.get());
+
+            ajk.ui.switchToTab('Bonfire');
             ajk.analysis.analyzeItems(this.bonfireTab.buttons);
+
+            ajk.ui.switchToTab('Sciene');
             if (this.scienceTab.visible)
             {
                 ajk.analysis.analyzeItems(this.scienceTab.buttons);
             }
+
+            ajk.ui.switchToTab('Workshop');
             if (this.workshopTab.visible)
             {
                 ajk.analysis.analyzeItems(this.workshopTab.buttons);
             }
+
             ajk.analysis.analyzeResults();
+            ajk.ui.switchToTab(null);
         },
 
         operateOnCostData: function(costData)
@@ -947,6 +1353,36 @@ ajk = {
 
         operateOnPriority: function()
         {
+            if (ajk.analysis.shouldExplore)
+            {
+                ajk.ui.switchToTab('Trade');
+                var explore = gamePage.diplomacyTab.exploreBtn;
+                if (explore.controller.hasResources(explore.model))
+                {
+                    ajk.log.debug('Attempting to discover new race');
+                    if (!ajk.simulate)
+                    {
+                        explore.controller.buyItem(explore.model, {}, function(result) {
+                            if (result)
+                            {
+                                ajk.log.info('Unlocked new race');
+                            }
+                            else
+                            {
+                                ajk.log.info('Failed to unlock new race');
+                            }
+                            // TODO - Figure out why this function is called twice with different arguments every time we try to discover a new race
+                            ajk.log.debugQueue.push(result);
+                        });
+                    }
+                }
+                else
+                {
+                    ajk.log.debug('Waiting on catpower for exploration');
+                }
+                ajk.ui.switchToTab(null);
+            }
+
             for (var i = 0; i < ajk.analysis.filteredPriorityList.length; ++i)
             {
                 var priority = ajk.analysis.filteredPriorityList[i];
@@ -956,12 +1392,13 @@ ajk = {
                 if (this.operateOnCostData(costData))
                 {
                     ajk.log.detail('Cost operations succeeded, acting');
-                    var item = ajk.analysis.data[priority].item;
-                    if (item.controller.hasResources(item.model))
+                    var itemData = ajk.analysis.data[priority];
+                    if (itemData.item.controller.hasResources(itemData.item.model))
                     {
+                        this.successes += 1;
                         if (!ajk.simulate)
                         {
-                            item.controller.buyItem(item.model, {}, function(result) {
+                            itemData.item.controller.buyItem(itemData.item.model, {}, function(result) {
                                 if (result)
                                 {
                                     ajk.log.info('Purchased ' + priority);
@@ -986,27 +1423,110 @@ ajk = {
             var timestamp = new Date();
             ajk.log.debug('Starting tick at ' + timestamp.toUTCString());
             var t0 = performance.now();
+            this.successes = 0;
             this.analyze();
             this.operateOnPriority();
             ajk.resources.convert();
-            ajk.ui.refreshPriorityTable();
+            ajk.ui.refreshTables();
+            if (this.successes > 0 && ajk.log.detailedLogsOnSuccess)
+            {
+                var previousLogLevel = ajk.log.logLevel;
+                ajk.log.logLevel = ajk.log.detailLevel;
+                ajk.log.flush();
+                ajk.log.logLevel = previousLogLevel;
+            }
+            else
+            {
+                ajk.log.flush();
+            }
             var t1 = performance.now();
             ajk.log.debug('Tick executed in ' + (t1 - t0) + ' ms');
         }
     },
 
+    jobs:
+    {
+        reprioritize: function()
+        {
+
+        }
+    },
+
     ui:
     {
+        previousTab: null,
+
         refreshPriorityTable: function()
         {
-            var container = $('#priortyTable');
+            var container = $('#priorityTable');
             container.empty();
             for (var i = 0; i < ajk.analysis.filteredPriorityList.length; ++i)
             {
                 var itemKey = ajk.analysis.filteredPriorityList[i];
                 var itemWeight = ajk.analysis.data[itemKey].weight;
-                container.append('<tr><td>' + itemKey + '</td><td>' + itemWeight + '</td></tr>');
+                container.append('<tr><td>' + itemKey + '</td><td style="text-align:right">' + itemWeight.toFixed(2) + '</td></tr>');
             }
+        },
+
+        refreshResourceDemandTable: function()
+        {
+            var container = $('#resourceDemandTable');
+            container.empty();
+            for (var resource in ajk.resources.demand)
+            {
+                container.append('<tr><td>' + resource + '</td><td style="text-align:right">' + ajk.resources.demand[resource].toFixed(2) + '</td></tr>');
+            }
+        },
+
+        refreshFullPriorityTable: function()
+        {
+            var container = $('#fullPriorityTable');
+            container.empty();
+            for (var i = 0; i < ajk.analysis.priorityList.length; ++i)
+            {
+                var itemKey = ajk.analysis.priorityList[i];
+                var itemData = ajk.analysis.data[itemKey];
+
+                var appendData = '<tr>';
+                appendData += '<td><span class="' + (itemData.missingMaxResources ? 'limited' : '') + '">' + itemKey + '</span></td>';
+                appendData += '<td style="text-align:right">' + itemData.weight.toFixed(2) + '</td>';
+                if (itemData.adjustment != 0)
+                {
+                    appendData += '<td style="text-align:right"><span style="color:' + (itemData.adjustment > 0 ? 'red' : 'green') + '">' + itemData.adjustment + '</span></td>';
+                }
+                appendData += '</tr>';
+                container.append(appendData);
+            }
+        },
+
+        refreshTables: function()
+        {
+            this.refreshPriorityTable();
+            this.refreshResourceDemandTable();
+            this.refreshFullPriorityTable();
+        },
+
+        switchToTab: function(tabName)
+        {
+            if (tabName == null && this.previousTab != null)
+            {
+                tabName = this.previousTab;
+                this.previousTab = null;
+            }
+            else if (this.previousTab == null && tabName != null)
+            {
+                this.previousTab = gamePage.ui.activeTabId;
+            }
+            else if (this.previousTab == null && tabName == null)
+            {
+                ajk.log.warn('No previous tab to switch to');
+                return;
+            }
+
+            if (tabName == gamePage.ui.activeTabId) { return; }
+
+            gamePage.ui.activeTabId = tabName;
+            gamePage.render();
         }
     },
 
@@ -1053,17 +1573,17 @@ var ajkMenu = `
         <label for="tickToggle">Ticking</label>
     </div>
     <br/>
-    <input id="infoLogToggle" type="checkbox" onclick="ajk.log.infoEnabled = $('#infoLogToggle')[0].checked;">
-    <label for="infoLogToggle">Info Logs</label>
+    <label for="logLevelSelect">Log Level</label>
+    <select id="logLevelSelect" onchange="ajk.log.updateLevel()">
+        <option value="0">Info</option>
+        <option value="1">Warn</option>
+        <option value="2">Debug</option>
+        <option value="3">Detail</option>
+        <option value="4">Trace</option>
+    </select>
     <br/>
-    <input id="warnLogToggle" type="checkbox" onclick="ajk.log.warnEnabled = $('#warnLogToggle')[0].checked;">
-    <label for="warnLogToggle">Warning Logs</label>
-    <br/>
-    <input id="debugLogToggle" type="checkbox" onclick="ajk.log.debugEnabled = $('#debugLogToggle')[0].checked;">
-    <label for="debugLogToggle">Debug Logs</label>
-    <br/>
-    <input id="detailLogToggle" type="checkbox" onclick="ajk.log.detailEnabled = $('#detailLogToggle')[0].checked;">
-    <label for="detailLogToggle">Detail Logs</label>
+    <input id="detailSuccessToggle" type="checkbox" onclick="ajk.log.detailedLogsOnSuccess = $('#detailSuccessToggle')[0].checked;">
+    <label for="detailSuccessToggle">Detailed Output On Success</label>
     <br/>
     <br/>
     <div id="container">
@@ -1081,12 +1601,22 @@ var ajkMenu = `
         <br/>
         <table id="priorityTable"/>
     </div>
+    <br/>
+    <div id="container">
+        <b>Resource Demand</b>
+        <br/>
+        <table id="resourceDemandTable"/>
+    </div>
+    <br/>
+    <div id="container">
+        <b>Full Priority List</b>
+        <br/>
+        <table id="fullPriorityTable"/>
+    </div>
 </div>
 `;
 
 $("#leftColumn").append(ajkMenu);
 $("#simulateToggle")[0].checked = ajk.simulate;
-$("#infoLogToggle")[0].checked = ajk.log.infoEnabled
-$("#warnLogToggle")[0].checked = ajk.log.warnEnabled
-$("#debugLogToggle")[0].checked = ajk.log.debugEnabled
-$("#detailLogToggle")[0].checked = ajk.log.detailEnabled
+$("#detailSuccessToggle")[0].checked = ajk.log.detailedLogsOnSuccess;
+$("#logLevelSelect")[0].value = ajk.log.logLevel;
