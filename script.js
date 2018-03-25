@@ -1015,6 +1015,67 @@ ajk = {
                     }
                 }
             }
+        },
+
+        tabDiscovery:
+        {
+            priorityWeight: -5,
+
+            priorityList: [],
+
+            prepare: function()
+            {
+                if (!ajk.core.scienceTab.visible)
+                {
+                    this.priorityList = ['library'];
+                }
+                else if (!ajk.core.workshopTab.visible)
+                {
+                    this.priorityList = [
+                        'calendar',
+                        'agriculture',
+                        'mining',
+                        'workshop'
+                    ];
+                }
+                else if (!ajk.core.religionTab.visible)
+                {
+                    this.priorityList = [
+                        'archery',
+                        'animal',
+                        'construction',
+                        'engineering',
+                        'writing',
+                        'philosophy',
+                        'temple'
+                    ];
+                }
+                else if (!ajk.core.spaceTab.visible)
+                {
+                    this.priorityList = [
+                        'theology',
+                        'astronomy',
+                        'navigation',
+                        'physics',
+                        'electricity',
+                        'industrialization',
+                        'mechanization',
+                        'electronics',
+                        'rocketry'
+                    ];
+                }
+            },
+            modifyItem: function(itemKey, item)
+            {
+                for (var i = 0; i < this.prioritList.length; ++i)
+                {
+                    if (itemKey == this.priorityList[i])
+                    {
+                        ajk.log.debug('Priotizing ' + itemKey + ' in order to discover a new tab');
+                        ajk.analysis.modifyWeight(itemKey, this.priorityWeight, true);
+                    }
+                }
+            }
         }
     },
 
@@ -1048,6 +1109,7 @@ ajk = {
             return [
                 ajk.adjustment.reinforceTopPriority,
                 ajk.adjustment.weightedDemandScaling,
+                ajk.adjustment.tabDiscovery,
             ];
         },
 
@@ -1353,6 +1415,8 @@ ajk = {
         bonfireTab: gamePage.tabs[0],
         scienceTab: gamePage.tabs[2],
         workshopTab: gamePage.tabs[3],
+        religionTab: gamePage.tabs[5],
+        spaceTab: gamePage.tabs[6],
 
         successes: 0,
 
