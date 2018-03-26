@@ -748,6 +748,93 @@ ajk = {
             return false;
         },
 
+        analyzeResourceProduction: function(price)
+        {
+            ajk.log.indent();
+            ajk.log.trace('Determining time cost of producing ' + price.val + ' ' + price.name);
+            var productionData = jQuery.extend({}, price);
+
+            var resource = gamePage.resPool.get(price.name);
+            if (resource.unlocked)
+            {
+                var minTicks = Math.max(0, (price.val - resource.value) / resource.perTickCached);
+                ajk.log.trace('Default per-tick production will take ' + minTicks + ' ticks');
+                productionData.method = 'PerTick';
+                productionData.time = minTicks;
+            }
+            else
+            {
+                ajk.log.trace(price.name + ' is locked, perhaps we can craft it...');
+                productionData.method = 'Locked';
+                productionData.time = Infinity;
+            }
+
+            if (resource.craftable && resource.name != 'wood')
+            {
+                var numCraftsRequired = Math.ceil(price.val / (1 + gamePage.getResCraftRatio(price.name)));
+                ajk.log.trace('Craftable in ' + numCraftsRequired + ' crafts');
+
+                var craftPrices = gamePage.workshop.getCraft(price.name).prices;
+                var modifiedCraftPrices = [];
+                for (var i = 0; i < craftPrices.length; ++i)
+                {
+                    modifiedCraftPrices.push({
+                        name: craftPrices[i].name,
+                        val: craftPrices[i].val * numCraftsRequired
+                    });
+                }
+
+                var costData = this.analyzeCostProduction(modifiedCraftPrices);
+                if (costData.time < productionData.time)
+                {
+                    ajk.log.trace('Crafting is more effective');
+                    productionData.time = costData.time;
+                    productionData.method = 'Craft';
+                    productionData.craftAmount = numCraftsRequired;
+                    productionData.dependencies = costData;
+                }
+            }
+
+            if (resource.name != 'catnip')
+            {
+                var tradeData = ajk.trade.getTradeDataFor(price);
+                if (tradeData != null)
+                {
+                    ajk.log.trace('Tradeable');
+                    var costData = this.analyzeCostProduction(tradeData.prices);
+                    if (costData.time < productionData.time)
+                    {
+                        ajk.log.trace('Trading is more effective');
+                        productionData.time = costData.time;
+                        productionData.method = 'Trade';
+                        productionData.tradeRace = tradeData.race;
+                        productionData.trades = tradeData.trades;
+                        productionData.dependencies = costData;
+                    }
+                }
+            }
+            ajk.log.unindent();
+            return productionData;
+        },
+
+        analyzeCostProduction: function(prices)
+        {
+            var costData = {
+                time: 0,
+                prices: []
+            };
+            for (var i = 0; i < prices.length; ++i)
+            {
+                var productionData = this.analyzeResourceProduction(prices[i]);
+                if (productionData.time > costData.time)
+                {
+                    costData.time = productionData.time;
+                }
+                costData.prices.push(productionData);
+            }
+            return costData;
+        },
+
         getFlatCostList: function(costData)
         {
             var prices = [];
@@ -970,7 +1057,7 @@ ajk = {
                 ajk.log.debug('Prioritizing items based on the previous top priority');
                 if (ajk.analysis.previousPriority.length > 0)
                 {
-                    if (ajk.analysis.data.hasOwnProperty(this.topPriority))
+                    if (ajk.analysis.data.hasOwnProperty(ajk.analysis.previousPriority[0]))
                     {
                         this.topPriority = ajk.analysis.previousPriority[0];
                         this.bottlenecks = ajk.resources.getBottlenecksFor(ajk.analysis.data[this.topPriority].costData);
@@ -1170,6 +1257,23 @@ ajk = {
                     ajk.analysis.modifyWeight(itemKey, this.tradeProductionBonus, 'boosts trade');
                 }
             }
+        },
+
+        priceRatioModule:
+        {
+            // TODO - Modify this to take into account kitten job movement
+            prepare: function() {},
+            modifyItem: function(itemKey)
+            {
+                var item = ajk.analysis.data[itemKey].item;
+
+                ajk.log.trace('Determining how to best produce ' + itemKey + ' and how long it will take');
+                var costData = ajk.resources.analyzeCostProduction(item.controller.getPrices(item.model));
+                var modifier = Math.log(costData.time + 1);
+                ajk.log.detail('It will be ' + costData.time + ' ticks until there are enough resources for ' + itemKey + ' (modifier ' + modifier + ')');
+                ajk.analysis.modifyWeight(itemKey, modifier, 'purchase time');
+                ajk.analysis.data[itemKey].costData = costData;
+            },
         }
     },
 
@@ -1201,6 +1305,7 @@ ajk = {
         weightAdjustments: function()
         {
             return [
+                ajk.adjustment.priceRatioModule,
                 ajk.adjustment.reinforceTopPriority,
                 ajk.adjustment.weightedDemandScaling,
                 ajk.adjustment.tabDiscovery,
@@ -1273,103 +1378,6 @@ ajk = {
             }
         },
 
-        analyzeResourceProduction: function(price)
-        {
-            ajk.log.indent();
-            ajk.log.trace('Determining time cost of producing ' + price.val + ' ' + price.name);
-            var productionData = jQuery.extend({}, price);
-
-            var resource = gamePage.resPool.get(price.name);
-            if (resource.unlocked)
-            {
-                var minTicks = Math.max(0, (price.val - resource.value) / resource.perTickCached);
-                ajk.log.trace('Default per-tick production will take ' + minTicks + ' ticks');
-                productionData.method = 'PerTick';
-                productionData.time = minTicks;
-            }
-            else
-            {
-                ajk.log.trace(price.name + ' is locked, perhaps we can craft it...');
-                productionData.method = 'Locked';
-                productionData.time = Infinity;
-            }
-
-            if (resource.craftable && resource.name != 'wood')
-            {
-                var numCraftsRequired = Math.ceil(price.val / (1 + gamePage.getResCraftRatio(price.name)));
-                ajk.log.trace('Craftable in ' + numCraftsRequired + ' crafts');
-
-                var craftPrices = gamePage.workshop.getCraft(price.name).prices;
-                var modifiedCraftPrices = [];
-                for (var i = 0; i < craftPrices.length; ++i)
-                {
-                    modifiedCraftPrices.push({
-                        name: craftPrices[i].name,
-                        val: craftPrices[i].val * numCraftsRequired
-                    });
-                }
-
-                var costData = this.analyzeCostProduction(modifiedCraftPrices);
-                if (costData.time < productionData.time)
-                {
-                    ajk.log.trace('Crafting is more effective');
-                    productionData.time = costData.time;
-                    productionData.method = 'Craft';
-                    productionData.craftAmount = numCraftsRequired;
-                    productionData.dependencies = costData;
-                }
-            }
-
-            if (resource.name != 'catnip')
-            {
-                var tradeData = ajk.trade.getTradeDataFor(price);
-                if (tradeData != null)
-                {
-                    ajk.log.trace('Tradeable');
-                    var costData = this.analyzeCostProduction(tradeData.prices);
-                    if (costData.time < productionData.time)
-                    {
-                        ajk.log.trace('Trading is more effective');
-                        productionData.time = costData.time;
-                        productionData.method = 'Trade';
-                        productionData.tradeRace = tradeData.race;
-                        productionData.trades = tradeData.trades;
-                        productionData.dependencies = costData;
-                    }
-                }
-            }
-            ajk.log.unindent();
-            return productionData;
-        },
-
-        analyzeCostProduction: function(prices)
-        {
-            var costData = {
-                time: 0,
-                prices: []
-            };
-            for (var i = 0; i < prices.length; ++i)
-            {
-                var productionData = this.analyzeResourceProduction(prices[i]);
-                if (productionData.time > costData.time)
-                {
-                    costData.time = productionData.time;
-                }
-                costData.prices.push(productionData);
-            }
-            return costData;
-        },
-
-        adjustItemPriceRatio: function(item)
-        {
-            var itemName = item.model.metadata.name;
-            ajk.log.trace('Determining how to best produce ' + itemName + ' and how long it will take');
-            var costData = this.analyzeCostProduction(item.controller.getPrices(item.model));
-            var modifier = Math.log(costData.time + 1);
-            ajk.log.detail('It will be ' + costData.time + ' ticks until there are enough resources for ' + itemName + ' (modifier ' + modifier + ')');
-            this.modifyWeight(itemName, modifier, 'purchase time');
-            this.data[itemName].costData = costData;
-        },
 
         analyzeItems: function(items)
         {
@@ -1409,8 +1417,6 @@ ajk = {
                         continue;
                     }
                 }
-
-                this.adjustItemPriceRatio(items[i]);
 
                 if (!mData.hasOwnProperty('val'))
                 {
@@ -1480,9 +1486,10 @@ ajk = {
                 ajk.log.detail('Accounting for catpower demand for exploration');
                 ajk.resources.accumulateSimpleDemand('manpower', 1000, ajk.trade.explorationDemandWeight);
             }
+        },
 
-            // TODO - Include analysis for tradepost weight based on demand for traded products
-
+        postAnalysisPass: function()
+        {
             // Filter the priority list and build up the table of resource requirements
             for (var i = 0; i < this.priorityList.length; ++i)
             {
@@ -1540,6 +1547,7 @@ ajk = {
             }
 
             ajk.analysis.analyzeResults();
+            ajk.analysis.postAnalysisPass();
             ajk.ui.switchToTab(null);
         },
 
