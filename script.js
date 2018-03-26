@@ -423,7 +423,7 @@ ajk = {
                     {
                         if (!ajk.simulate)
                         {
-                            gamePage.workshop.craft('ship', 1);
+                            ajk.workshop.craft('ship', 1);
                         }
                     }
                 },
@@ -672,7 +672,8 @@ ajk = {
         craft: function(resource, crafts)
         {
             var allowedCrafts = gamePage.workshop.getCraftAllCount(resource);
-            if (allowedCrafts < crafts)
+            if (allowedCrafts == 0) { return false; }
+            if (typeof crafts === 'undefined' || allowedCrafts < crafts)
             {
                 ajk.log.detail('Crafting as many ' + resource + 's as possible (' + allowedCrafts + '/' + crafts + ')');
                 if (!ajk.simulate)
@@ -686,7 +687,10 @@ ajk = {
                 ajk.log.detail('Crafting ' + crafts + ' ' + resource);
                 if (!ajk.simulate)
                 {
-                    gamePage.workshop.craft(resource, crafts);
+                    if (!gamePage.workshop.craft(resource, crafts))
+                    {
+                        ajk.log.warn('Failed to craft ' + crafts + ' ' + resource);
+                    }
                 }
                 return true;
             }
@@ -864,7 +868,7 @@ ajk = {
                 {
                     if (flatList[i].time > bottlenecks[j].time)
                     {
-                        bottlenecks.splice(i, 0, flatList[i]);
+                        bottlenecks.splice(j, 0, flatList[i]);
                         emplaced = true;
                         break;
                     }
@@ -998,7 +1002,7 @@ ajk = {
                     ajk.log.debug('Converting ' + amountToConvert + ' ' + rName + 's into ' + craft.name);
                     if (!ajk.simulate)
                     {
-                        gamePage.workshop.craft(craft.name, numCrafts);
+                        ajk.workshop.craft(craft.name, numCrafts);
                     }
                 }
             }
@@ -1026,15 +1030,15 @@ ajk = {
 
             if (!ajk.simulate)
             {
-                gamePage.workshop.craftAll('parchment');
+                ajk.workshop.craft('parchment');
             }
             if (!ajk.simulate && !this.inDemand('parchment') && !this.inDemand('culture'))
             {
-                gamePage.workshop.craftAll('manuscript');
+                ajk.workshop.craft('manuscript');
             }
             if (!ajk.simulate && this.inDemand('manuscript') && !this.inDemand('science'))
             {
-                gamePage.workshop.craftAll('compedium');
+                ajk.workshop.craft('compedium');
             }
         }
     },
@@ -1261,6 +1265,8 @@ ajk = {
 
         priceRatioModule:
         {
+            priceModifier: 0.5,
+
             // TODO - Modify this to take into account kitten job movement
             prepare: function() {},
             modifyItem: function(itemKey)
@@ -1269,7 +1275,8 @@ ajk = {
 
                 ajk.log.trace('Determining how to best produce ' + itemKey + ' and how long it will take');
                 var costData = ajk.resources.analyzeCostProduction(item.controller.getPrices(item.model));
-                var modifier = Math.log(costData.time + 1);
+                var modifier = Math.log(costData.time + 1) * this.priceModifier;
+
                 ajk.log.detail('It will be ' + costData.time + ' ticks until there are enough resources for ' + itemKey + ' (modifier ' + modifier + ')');
                 ajk.analysis.modifyWeight(itemKey, modifier, 'purchase time');
                 ajk.analysis.data[itemKey].costData = costData;
@@ -1582,7 +1589,6 @@ ajk = {
                 }
                 else if (price.method == 'Craft')
                 {
-                    ajk.log.trace('Crafting ' + price.craftAmount);
                     allSucceeded &= ajk.workshop.craft(price.name, price.craftAmount);
                 }
                 else
@@ -1692,6 +1698,7 @@ ajk = {
             this.operateOnPriority();
             ajk.resources.convert();
             ajk.ui.refreshTables();
+            ajk.jobs.assignFreeKittens();
             ajk.log.flush(this.successes > 0 && ajk.log.detailedLogsOnSuccess);
 
             var t1 = performance.now();
@@ -1701,9 +1708,61 @@ ajk = {
 
     jobs:
     {
+        internal:
+        {
+            assign: function(jobName)
+            {
+                if (!gamePage.village.getJob(jobName).unlocked) { return false; }
+                if (!ajk.simulate)
+                {
+                    ajk.log.debug('Kitten assigned to be a ' + jobName);
+                    gamePage.village.assignJob(gamePage.village.getJob(jobName));
+                }
+                return true;
+            }
+        },
+
         reprioritize: function()
         {
 
+        },
+
+        assignFreeKittens: function()
+        {
+            // This is a stopgap until I have actual reassignment
+            var free = gamePage.village.getFreeKittens();
+            if (free == 0) { return; }
+
+            // If catnip production is dipping, this cat is a farmer
+            if (gamePage.resPool.get('catnip').perTickCached <= 0)
+            {
+                this.internal.assign('farmer');
+                return;
+            }
+
+            var highestPri = ajk.analysis.filteredPriorityList[0];
+            if (typeof highestPri === 'undefined' || !ajk.analysis.data.hasOwnProperty(highestPri))
+            {
+                ajk.log.debug('Waiting to assign kitten to a job pending a clear priority');
+                return;
+            }
+
+            var bottlenecks = ajk.resources.getBottlenecksFor(ajk.analysis.data[highestPri].costData);
+            if (bottlenecks.length == 0)
+            {
+                ajk.log.debug('Waiting to assign kitten to a job pending a clear priority');
+                return;
+            }
+
+            var bottleneck = bottlenecks[0].name;
+            if (bottleneck == 'minerals' && this.internal.assign('miner')) { return; }
+            if (bottleneck == 'wood' && this.internal.assign('woodcutter')) { return; }
+            if (bottleneck == 'science' && this.internal.assign('scholar')) { return; }
+            if ((bottleneck == 'manpower' || bottleneck == 'furs' || bottleneck == 'ivory' || bottleneck == 'spice') && this.internal.assign('hunter')) { return; }
+            if ((bottleneck == 'coal' || bottleneck == 'gold') && this.internal.assign('geologist')) { return ;}
+            if (this.internal.assign('priest')) { return; }
+
+            ajk.log.debug('Bottleneck ' + bottleneck + ' demands no job that is mapped');
         }
     },
 
