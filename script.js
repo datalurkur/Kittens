@@ -161,6 +161,8 @@ ajk = {
 
         logLevel:    1,
 
+        indentLevel: 0,
+
         detailedLogsOnSuccess: false,
         detailedLogsOnError: true,
 
@@ -170,8 +172,11 @@ ajk = {
 
         logInternal: function(message, level)
         {
-            this.logQueue.push([message, level]);
+            this.logQueue.push(['  '.repeat(this.indentLevel) + message, level]);
         },
+
+        indent: function()   { this.indentLevel += 1; },
+        unindent: function() { this.indentLevel -= 1; },
 
         flush: function(ignoreLevel)
         {
@@ -192,6 +197,7 @@ ajk = {
         info:   function(message) { this.logInternal(message, this.infoLevel);   },
         error:  function(message)
         {
+            ajk.shouldTick(false);
             if (this.detailedLogsOnError)
             {
                 this.flush(true);
@@ -973,7 +979,7 @@ ajk = {
                 if (itemKey == this.topPriority)
                 {
                     ajk.log.debug('Increasing weight of ' + itemKey + ' to reinforce the previous top priority');
-                    ajk.analysis.modifyWeight(itemKey, this.topModifier, true);
+                    ajk.analysis.modifyWeight(itemKey, this.topModifier, 'previous priority');
                     return;
                 }
 
@@ -991,6 +997,8 @@ ajk = {
 
         weightedDemandScaling:
         {
+            modWeight: 0.5,
+
             weightedDemand: {},
 
             prepare: function()
@@ -1002,16 +1010,20 @@ ajk = {
             {
                 for (var resource in this.weightedDemand)
                 {
-                    var mod = this.weightedDemand[resource];
+                    var mod = this.weightedDemand[resource] * this.modWeight;
+
+                    // Catnip production really shouldn't drive weights too heavily
+                    if (resource == 'catnip') { mod = mod * 0.1; }
+
                     if (ajk.cache.isProducerOf(itemKey, resource))
                     {
                         ajk.log.debug('Increasing weight of ' + itemKey + ' by ' + mod + ' based on the demand for ' + resource);
-                        ajk.analysis.modifyWeight(itemKey, mod, true);
+                        ajk.analysis.modifyWeight(itemKey, mod, 'production of ' + resource);
                     }
                     else if (ajk.cache.isConsumerOf(itemKey, resource))
                     {
                         ajk.log.debug('Decreasing weight of ' + itemKey + ' by ' + mod + ' based on the demand for ' + resource);
-                        ajk.analysis.modifyWeight(itemKey, -mod, true);
+                        ajk.analysis.modifyWeight(itemKey, -mod, 'consumption of ' + resource);
                     }
                 }
             }
@@ -1064,15 +1076,19 @@ ajk = {
                         'rocketry'
                     ];
                 }
+                else
+                {
+                    this.priorityList = [];
+                }
             },
             modifyItem: function(itemKey, item)
             {
-                for (var i = 0; i < this.prioritList.length; ++i)
+                for (var i = 0; i < this.priorityList.length; ++i)
                 {
                     if (itemKey == this.priorityList[i])
                     {
                         ajk.log.debug('Priotizing ' + itemKey + ' in order to discover a new tab');
-                        ajk.analysis.modifyWeight(itemKey, this.priorityWeight, true);
+                        ajk.analysis.modifyWeight(itemKey, this.priorityWeight, 'tab discovery');
                     }
                 }
             }
@@ -1134,12 +1150,12 @@ ajk = {
                 {
                     this.data[itemName].weight = 0;
                 }
-                this.data[itemName].adjustment = 0;
+                this.data[itemName].adjustments = [];
             }
             this.data[itemName].weight += modifier;
-            if (typeof adjustment !== 'undefined' && adjustment)
+            if (adjustment != null)
             {
-                this.data[itemName].adjustment += modifier;
+                this.data[itemName].adjustments.push([adjustment, modifier]);
             }
         },
 
@@ -1167,7 +1183,7 @@ ajk = {
                     for (var i = 0; i < explorationRequirement.length; ++i)
                     {
                         ajk.log.detail('Modifying the weight of ' + explorationRequirement[i] + ' to account for exploration requirements');
-                        this.modifyWeight(explorationRequirement[i], this.explorationModifier, true);
+                        this.modifyWeight(explorationRequirement[i], this.explorationModifier, 'exploration requirements');
                     }
                 }
                 else
@@ -1180,20 +1196,21 @@ ajk = {
 
         analyzeResourceProduction: function(price)
         {
-            ajk.log.trace('  Determining time cost of producing ' + price.val + ' ' + price.name);
+            ajk.log.indent();
+            ajk.log.trace('Determining time cost of producing ' + price.val + ' ' + price.name);
             var productionData = jQuery.extend({}, price);
 
             var resource = gamePage.resPool.get(price.name);
             if (resource.unlocked)
             {
                 var minTicks = Math.max(0, (price.val - resource.value) / resource.perTickCached);
-                ajk.log.trace('    Default per-tick production will take ' + minTicks + ' ticks');
+                ajk.log.trace('Default per-tick production will take ' + minTicks + ' ticks');
                 productionData.method = 'PerTick';
                 productionData.time = minTicks;
             }
             else
             {
-                ajk.log.trace('    ' + price.name + ' is locked, perhaps we can craft it...');
+                ajk.log.trace(price.name + ' is locked, perhaps we can craft it...');
                 productionData.method = 'Locked';
                 productionData.time = Infinity;
             }
@@ -1201,7 +1218,7 @@ ajk = {
             if (resource.craftable && resource.name != 'wood')
             {
                 var numCraftsRequired = Math.ceil(price.val / (1 + gamePage.getResCraftRatio(price.name)));
-                ajk.log.trace('    Craftable in ' + numCraftsRequired + ' crafts');
+                ajk.log.trace('Craftable in ' + numCraftsRequired + ' crafts');
 
                 var craftPrices = gamePage.workshop.getCraft(price.name).prices;
                 var modifiedCraftPrices = [];
@@ -1216,7 +1233,7 @@ ajk = {
                 var costData = this.analyzeCostProduction(craftPrices);
                 if (costData.time < productionData.time)
                 {
-                    ajk.log.trace('    Crafting is more effective');
+                    ajk.log.trace('Crafting is more effective');
                     productionData.time = costData.time;
                     productionData.method = 'Craft';
                     productionData.craftAmount = numCraftsRequired;
@@ -1229,11 +1246,11 @@ ajk = {
                 var tradeData = ajk.trade.getTradeDataFor(price);
                 if (tradeData != null)
                 {
-                    ajk.log.trace('    Tradeable');
+                    ajk.log.trace('Tradeable');
                     var costData = this.analyzeCostProduction(tradeData.prices);
                     if (costData.time < productionData.time)
                     {
-                        ajk.log.trace('    Trading is more effective');
+                        ajk.log.trace('Trading is more effective');
                         productionData.time = costData.time;
                         productionData.method = 'Trade';
                         productionData.tradeRace = tradeData.race;
@@ -1242,6 +1259,7 @@ ajk = {
                     }
                 }
             }
+            ajk.log.unindent();
             return productionData;
         },
 
@@ -1270,7 +1288,7 @@ ajk = {
             var costData = this.analyzeCostProduction(item.controller.getPrices(item.model));
             var modifier = Math.log(costData.time + 1);
             ajk.log.detail('It will be ' + costData.time + ' ticks until there are enough resources for ' + itemName + ' (modifier ' + modifier + ')');
-            this.modifyWeight(itemName, modifier);
+            this.modifyWeight(itemName, modifier, null);
             this.data[itemName].costData = costData;
         },
 
@@ -1319,7 +1337,7 @@ ajk = {
                 {
                     // Favor one-shots
                     ajk.log.debug('Prioritizing ' + itemName + ' as a one-shot');
-                    this.modifyWeight(itemName, this.oneShotModifier, true);
+                    this.modifyWeight(itemName, this.oneShotModifier, 'one-shot');
                 }
 
                 var missingMaxResources = false;
@@ -1448,20 +1466,31 @@ ajk = {
 
         operateOnCostData: function(costData)
         {
+            ajk.log.indent();
             var allSucceeded = true;
             for (var j = costData.prices.length - 1; j >= 0; --j)
             {
-                if (costData.prices[j].hasOwnProperty('dependencies'))
+                var price = costData.prices[j];
+                ajk.log.detail('Operating on cost data of ' + price.name);
+                if (price.hasOwnProperty('dependencies'))
                 {
+                    ajk.log.trace('Diving into dependencies');
                     allSucceeded &= this.operateOnCostData(costData.prices[j].dependencies);
                 }
-                var price = costData.prices[j];
                 if (price.method == 'Trade')
                 {
-                    allSucceeded &= ajk.trade.tradeWith(price.tradeRace, price.trades);
+                     if (ajk.trade.tradeWith(price.tradeRace, price.trades))
+                     {
+                        allSucceeded &= (gamePage.resPool.get(price.name).value >= price.amount);
+                     }
+                     else
+                     {
+                        allSucceeded = false;
+                     }
                 }
                 else if (price.method == 'Craft')
                 {
+                    ajk.log.trace('Crafting ' + price.craftAmount);
                     allSucceeded &= ajk.workshop.craft(price.name, price.craftAmount);
                 }
                 else
@@ -1481,9 +1510,14 @@ ajk = {
                     {
                         ajk.log.detail('Waiting on ' + resource.name);
                     }
+                    else
+                    {
+                        ajk.log.trace('Sufficient quantity exists (deficit: ' + deficit + ')');
+                    }
                     allSucceeded &= sufficient;
                 }
             }
+            ajk.log.unindent();
             return allSucceeded;
         },
 
@@ -1585,54 +1619,242 @@ ajk = {
     {
         previousTab: null,
 
-        refreshPriorityTable: function()
+        internal:
         {
-            var container = $('#priorityTable');
-            container.empty();
-            for (var i = 0; i < ajk.analysis.filteredPriorityList.length; ++i)
-            {
-                var itemKey = ajk.analysis.filteredPriorityList[i];
-                var itemWeight = ajk.analysis.data[itemKey].weight;
-                container.append('<tr><td>' + itemKey + '</td><td style="text-align:right">' + itemWeight.toFixed(2) + '</td></tr>');
-            }
-        },
+            style: `
+                <style id="ajkStyle">
+                    .accordion
+                    {
+                        border: none;
+                        outline: none;
 
-        refreshResourceDemandTable: function()
-        {
-            var container = $('#resourceDemandTable');
-            container.empty();
-            for (var resource in ajk.resources.demand)
-            {
-                container.append('<tr><td>' + resource + '</td><td style="text-align:right">' + ajk.resources.demand[resource].amount.toFixed(2) + '</td></tr>');
-            }
-        },
+                        color: white;
+                        background: none;
 
-        refreshFullPriorityTable: function()
-        {
-            var container = $('#fullPriorityTable');
-            container.empty();
-            for (var i = 0; i < ajk.analysis.priorityList.length; ++i)
-            {
-                var itemKey = ajk.analysis.priorityList[i];
-                var itemData = ajk.analysis.data[itemKey];
+                        text-transform: capitalize;
+                        text-align:left;
+                        font-weight: bold;
+                        font-size: 20px;
+                        font-family: 'Times New Roman', Times, serif;
 
-                var appendData = '<tr>';
-                appendData += '<td><span class="' + (itemData.missingMaxResources ? 'limited' : '') + '">' + itemKey + '</span></td>';
-                appendData += '<td style="text-align:right">' + itemData.weight.toFixed(2) + '</td>';
-                if (itemData.adjustment != 0)
+                        padding-top: 10px;
+                    }
+                    .inlineAccordion
+                    {
+                        border: none;
+                        outline: none;
+
+                        color: white;
+                        background: none;
+
+                        text-align:left;
+                        font-family: 'Times New Roman', Times, serif;
+                        font-size: 14px;
+
+                        padding: 0px;
+                        margin: 0px;
+                        width: 100%;
+                    }
+                    .accordion:hover
+                    {
+                        color: red;
+                        text-decoration: underline overline dotted red;
+                    }
+                    .inlineAccordion:hover
+                    {
+                        background-color: rgb(64, 64, 64);
+                    }
+                    .accordionPanel
+                    {
+                        padding-left: 5px;
+                        font-size: 14px;
+                    }
+                    .ajkTable
+                    {
+                        font-family: 'Times New Roman', Times, serif;
+                        font-size: 14px;
+                        width: 100%;
+                        border-spacing: 0px;
+                    }
+                    .ajkTable tbody tr td
+                    {
+
+                    }
+                    .ajkTable tbody tr:nth-child(odd) td
+                    {
+                        background: rgb(16, 16, 16);
+                    }
+                    span.ajkAdjustment
+                    {
+                        margin-left: 5px;
+                        margin-right: 5px;
+                        width: 50px;
+                        float: left;
+                        text-align: right;
+                    }
+                    span.ajkDisabled
+                    {
+                        color: rgb(64, 64, 64);
+                    }
+                    span.ajkAdjustment.positive
+                    {
+                        color: rgb(64, 256, 64);
+                    }
+                    span.ajkAdjustment.negative
+                    {
+                        color: rgb(256, 64, 64);
+                    }
+                </style>`,
+
+            scriptControlContent: `
+                <input id="simulateToggle" type="checkbox" onclick="ajk.simulate = $('#simulateToggle')[0].checked;">
+                <label for="simulateToggle">Simulate</label>
+                <br/>
+                <input id="tickToggle" type="checkbox" onclick="ajk.shouldTick($('#tickToggle')[0].checked);">
+                <label for="tickToggle">Ticking</label>
+                <br/>
+                <label for="logLevelSelect">Log Level</label>
+                <select id="logLevelSelect" onchange="ajk.log.updateLevel()">
+                    <option value="-1">Errors Only</option>
+                    <option value="0">Errors and Warnings</option>
+                    <option value="1">Info</option>
+                    <option value="2">Debug</option>
+                    <option value="3">Detail</option>
+                    <option value="4">Trace</option>
+                </select>
+                <br/>
+                <input id="detailSuccessToggle" type="checkbox" onclick="ajk.log.detailedLogsOnSuccess = $('#detailSuccessToggle')[0].checked;">
+                <label for="detailSuccessToggle">Detailed Output On Success</label>
+                <br/>
+                <input id="detailErrorToggle" type="checkbox" onclick="ajk.log.detailedLogsOnError = $('#detailErrorToggle')[0].checked;">
+                <label for="detailErrorToggle">Detailed Output On Errors</label>
+                <br/>`,
+
+            backupContent: `
+                <input id="backupToggle" type="checkbox" onclick="ajk.backup.shouldDoBackup($('#backupToggle')[0].checked);">
+                <label for="backupToggle">Perform Backups</label>
+                <br/>
+                <input type="button" id="signin-button" value="Sign In" onclick="ajk.backup.handleSignInClick();" style="width:100px">
+                <input type="button" id="signout-button" value="Sign Out" onclick="ajk.backup.handleSignOutClick();" style="width:100px">
+                <br/>`,
+
+            togglePanel: function(panel)
+            {
+                panel.style.display = (panel.style.display == 'none' ? 'block' : 'none');
+            },
+
+            createCollapsiblePanel: function(parent, id, title, content, isInline, startCollapsed)
+            {
+                var classHeader = (isInline ? 'inlineAccordion' : 'accordion');
+                var html = '';
+                html += '<button class="' + classHeader + '" id="' + id + 'Button" onclick="ajk.ui.internal.togglePanel($(\'#' + id + 'Panel\')[0]);">' + title + '</button><br/>';
+                html += '<div class="' + classHeader + 'Panel" id="' + id + 'Panel" style="display:' + (startCollapsed ? 'none' : 'block') + '">';
+                html += content;
+                html += '</div>';
+                parent.append(html);
+            },
+
+            refreshPriorityTable: function()
+            {
+                var container = $('#priorityTable');
+                container.empty();
+                for (var i = 0; i < ajk.analysis.filteredPriorityList.length; ++i)
                 {
-                    appendData += '<td style="text-align:right"><span style="color:' + (itemData.adjustment > 0 ? 'red' : 'green') + '">' + itemData.adjustment.toFixed(2) + '</span></td>';
+                    var itemKey = ajk.analysis.filteredPriorityList[i];
+                    var itemWeight = ajk.analysis.data[itemKey].weight;
+                    container.append('<tr><td><span>' + itemKey + '</span></td><td style="text-align:right"><span>' + itemWeight.toFixed(2) + '</span></td></tr>');
                 }
-                appendData += '</tr>';
-                container.append(appendData);
-            }
+            },
+
+            refreshResourceDemandTable: function()
+            {
+                var container = $('#resourceDemandTable');
+                container.empty();
+                for (var resource in ajk.resources.demand)
+                {
+                    container.append('<tr><td>' + resource + '</td><td style="text-align:right">' + ajk.resources.demand[resource].amount.toFixed(2) + '</td></tr>');
+                }
+            },
+
+            refreshFullPriorityTable: function()
+            {
+                var container = $('#fullPriorityTable');
+                container.empty();
+                for (var i = 0; i < ajk.analysis.priorityList.length; ++i)
+                {
+                    var itemKey = ajk.analysis.priorityList[i];
+                    var itemData = ajk.analysis.data[itemKey];
+
+                    var rowId = itemKey + 'Detail';
+
+                    var appendData = '<tr><td id="' + rowId + '"/></tr>';
+                    container.append(appendData);
+                    var tableRow = $('#'+ rowId);
+
+                    var title = '<span class="' + (itemData.missingMaxResources ? 'limited' : '') + '">' + itemKey + '</span><span style="float:right;">' + itemData.weight.toFixed(2) + '</span>';
+                    var content = '';
+                    if (itemData.adjustments.length > 0)
+                    {
+                        for (var j = 0; j < itemData.adjustments.length; ++j)
+                        {
+                            var spanClass = '';
+                            var adjData =itemData.adjustments[j];
+                            if (adjData[1] > 0)
+                            {
+                                spanClass = ' negative';
+                            }
+                            else if (adjData[1] < 0)
+                            {
+                                spanClass = ' positive';
+                            }
+                            content += '<span class="ajkAdjustment' + spanClass + '">' + itemData.adjustments[j][1].toFixed(2) + '</span>';
+                            content += '<span>' + itemData.adjustments[j][0] + '</span><br/>';
+                        }
+                    }
+                    else
+                    {
+                        content = '<span class="ajkAdjustment"/><span class="ajkDisabled">No Adjustments</span>';
+                    }
+                    var hidden = (itemData.adjustments.length == 0);
+                    this.createCollapsiblePanel(tableRow, 'ajk' + itemKey + 'Detail', title, content, true, hidden);
+                }
+            },
         },
 
         refreshTables: function()
         {
-            this.refreshPriorityTable();
-            this.refreshResourceDemandTable();
-            this.refreshFullPriorityTable();
+            this.internal.refreshPriorityTable();
+            this.internal.refreshResourceDemandTable();
+            this.internal.refreshFullPriorityTable();
+        },
+
+        clearExistingUI: function()
+        {
+            var ajkContainer = $("#ajkMenu");
+            if (ajkContainer != null) { ajkContainer.remove(); }
+
+            var ajkStyleContainer = $('#ajkStyle');
+            if (ajkStyleContainer != null) { ajkStyleContainer.remove(); }
+        },
+
+        createUI: function()
+        {
+            this.clearExistingUI();
+
+            $('head').append(this.internal.style);
+            $('#leftColumn').append('<div id="ajkMenu"/>');
+
+            var menu = $('#ajkMenu');
+            this.internal.createCollapsiblePanel(menu, 'ajkScriptControl', 'Script Control', this.internal.scriptControlContent, false, false);
+            this.internal.createCollapsiblePanel(menu, 'ajkBackup', 'Google Drive Backup', this.internal.backupContent, false, true);
+            this.internal.createCollapsiblePanel(menu, 'ajkPriority', 'Priority Result', '<table id="priorityTable" class="ajkTable"/>', false, false);
+            this.internal.createCollapsiblePanel(menu, 'ajkResources', 'Resource Demand', '<table id="resourceDemandTable" class="ajkTable"/>', false, true);
+            this.internal.createCollapsiblePanel(menu, 'ajkPriorityDetail', 'Priority Detail', '<table id="fullPriorityTable" class="ajkTable"/>', false, false);
+
+            $("#simulateToggle")[0].checked = ajk.simulate;
+            $("#detailSuccessToggle")[0].checked = ajk.log.detailedLogsOnSuccess;
+            $("#detailErrorToggle")[0].checked = ajk.log.detailedLogsOnError;
+            $("#logLevelSelect")[0].value = ajk.log.logLevel;
         },
 
         switchToTab: function(tabName)
@@ -1693,75 +1915,5 @@ ajk = {
     }
 }
 
-var ajkContainer = $("#scriptingMenu");
-if (ajkContainer != null)
-{
-    ajkContainer.remove();
-}
-
-var ajkMenu = `
-<div id="scriptingMenu" style="margin:10px; padding:10px" class="panelContainer">
-    <div id="container">
-        <b>AJK Script Control</b>
-        <br/>
-        <input id="simulateToggle" type="checkbox" onclick="ajk.simulate = $('#simulateToggle')[0].checked;">
-        <label for="simulateToggle">Simulate</label>
-        <br/>
-        <input id="tickToggle" type="checkbox" onclick="ajk.shouldTick($('#tickToggle')[0].checked);">
-        <label for="tickToggle">Ticking</label>
-    </div>
-    <br/>
-    <label for="logLevelSelect">Log Level</label>
-    <select id="logLevelSelect" onchange="ajk.log.updateLevel()">
-        <option value="-1">Errors Only</option>
-        <option value="0">Errors and Warnings</option>
-        <option value="1">Info</option>
-        <option value="2">Debug</option>
-        <option value="3">Detail</option>
-        <option value="4">Trace</option>
-    </select>
-    <br/>
-    <input id="detailSuccessToggle" type="checkbox" onclick="ajk.log.detailedLogsOnSuccess = $('#detailSuccessToggle')[0].checked;">
-    <label for="detailSuccessToggle">Detailed Output On Success</label>
-    <br/>
-    <input id="detailErrorToggle" type="checkbox" onclick="ajk.log.detailedLogsOnError = $('#detailErrorToggle')[0].checked;">
-    <label for="detailErrorToggle">Detailed Output On Errors</label>
-    <br/>
-    <br/>
-    <div id="container">
-        <b>Google Drive Backup</b>
-        <br/>
-        <input id="backupToggle" type="checkbox" onclick="ajk.backup.shouldDoBackup($('#backupToggle')[0].checked);">
-        <label for="backupToggle">Perform Backups</label>
-        <br/>
-        <input type="button" id="signin-button" value="Sign In" onclick="ajk.backup.handleSignInClick();" style="width:100px">
-        <input type="button" id="signout-button" value="Sign Out" onclick="ajk.backup.handleSignOutClick();" style="width:100px">
-    </div>
-    <br/>
-    <div id="container">
-        <b>Weighted / Filtered Priorities</b>
-        <br/>
-        <table id="priorityTable"/>
-    </div>
-    <br/>
-    <div id="container">
-        <b>Resource Demand</b>
-        <br/>
-        <table id="resourceDemandTable"/>
-    </div>
-    <br/>
-    <div id="container">
-        <b>Full Priority List</b>
-        <br/>
-        <table id="fullPriorityTable"/>
-    </div>
-</div>
-`;
-
-$("#leftColumn").append(ajkMenu);
-$("#simulateToggle")[0].checked = ajk.simulate;
-$("#detailSuccessToggle")[0].checked = ajk.log.detailedLogsOnSuccess;
-$("#detailErrorToggle")[0].checked = ajk.log.detailedLogsOnError;
-$("#logLevelSelect")[0].value = ajk.log.logLevel;
-
+ajk.ui.createUI();
 ajk.simulateTick();
