@@ -1762,7 +1762,35 @@ ajk = {
                 {
                     var itemKey = ajk.analysis.filteredPriorityList[i];
                     var itemWeight = ajk.analysis.data[itemKey].weight;
-                    container.append('<tr><td><span>' + itemKey + '</span></td><td style="text-align:right"><span>' + itemWeight.toFixed(2) + '</span></td></tr>');
+
+                    var timeLeft = Math.ceil(ajk.analysis.data[itemKey].costData.time / 5);
+                    var timeString = '';
+
+                    var seconds = Math.floor(timeLeft % 60);
+                    timeLeft = Math.floor(timeLeft / 60);
+                    timeString += ('0' + seconds).slice(-2) + 's';
+
+                    if (timeLeft > 0)
+                    {
+                        var minutes = Math.floor(timeLeft % 60);
+                        timeLeft = Math.floor(timeLeft / 60);
+                        timeString += ('0' + minutes).slice(-2) + 'm ';
+
+                        if (timeLeft > 0)
+                        {
+                            var hours = Math.floor(timeLeft % 24);
+                            timeLeft = Math.floor(timeLeft / 24);
+                            timeString += ('0' + hours).slice(-2) + 'h ';
+
+                            if (timeLeft > 0)
+                            {
+                                var days = Math.floor(timeLeft);
+                                timeString += ('0' + days).slice(-2) + 'd ';
+                            }
+                        }
+                    }
+
+                    container.append('<tr><td><span>' + itemKey + '</span></td><td style="text-align:right"><span>' + timeString + '</span></td></tr>');
                 }
             },
 
