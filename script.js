@@ -521,14 +521,18 @@ ajk = {
                 });
             }
             var numTradesRequired = Math.ceil(raceAmount / price.val);
+            var requiredManpower = numTradesRequired * 50;
+            var requiredGold = numTradesRequired * 15;
             prices.push({
                 name: 'manpower',
-                val: numTradesRequired * 50
+                val: requiredManpower,
             });
             prices.push({
                 name: 'gold',
-                val: numTradesRequired * 15
+                val: requiredGold,
             });
+
+            ajk.log.detail(price.name + ' can be acquired from ' + chosenRace.name + ' in ' + numTradesRequired + ' trades, at a cost of ' + requiredManpower + ' catpower and ' + requiredGold + ' gold');
 
             return {
                 prices: prices,
@@ -960,20 +964,25 @@ ajk = {
 
             prepare: function()
             {
+                this.topPriority = null;
+                this.bottlenecks = null;
+
                 ajk.log.debug('Prioritizing items based on the previous top priority');
-                if (ajk.analysis.previousPriority.length == 0)
+                if (ajk.analysis.previousPriority.length > 0)
                 {
-                    this.topPriority = null;
-                    this.bottlenecks = null;
-                }
-                else
-                {
-                    this.topPriority = ajk.analysis.previousPriority[0];
-                    this.bottlenecks = ajk.resources.getBottlenecksFor(ajk.analysis.data[this.topPriority].costData);
-                    ajk.log.debug('Production of ' + this.topPriority + ' is bottlenecked on ' + this.bottlenecks.length + ' resources');
+                    if (ajk.analysis.data.hasOwnProperty(this.topPriority))
+                    {
+                        this.topPriority = ajk.analysis.previousPriority[0];
+                        this.bottlenecks = ajk.resources.getBottlenecksFor(ajk.analysis.data[this.topPriority].costData);
+                        ajk.log.debug('Production of ' + this.topPriority + ' is bottlenecked on ' + this.bottlenecks.length + ' resources');
+                    }
+                    else
+                    {
+                        ajk.log.debug('Previous priority was met, skipping reinforcement');
+                    }
                 }
             },
-            modifyItem: function(itemKey, item)
+            modifyItem: function(itemKey)
             {
                 if (this.topPriority == null) { return; }
                 if (itemKey == this.topPriority)
@@ -1006,7 +1015,7 @@ ajk = {
                 ajk.log.debug('Prioritizing items based on weight-adjusted demand');
                 this.weightedDemand = ajk.resources.getWeightedDemand(ajk.resources.previousDemand);
             },
-            modifyItem: function(itemKey, item)
+            modifyItem: function(itemKey)
             {
                 for (var resource in this.weightedDemand)
                 {
@@ -1081,7 +1090,7 @@ ajk = {
                     this.priorityList = [];
                 }
             },
-            modifyItem: function(itemKey, item)
+            modifyItem: function(itemKey)
             {
                 for (var i = 0; i < this.priorityList.length; ++i)
                 {
@@ -1090,6 +1099,75 @@ ajk = {
                         ajk.log.debug('Priotizing ' + itemKey + ' in order to discover a new tab');
                         ajk.analysis.modifyWeight(itemKey, this.priorityWeight, 'tab discovery');
                     }
+                }
+            }
+        },
+
+        tradingModule:
+        {
+            tradePenalty: 1,
+            tradeProductionBonusBase: -2,
+
+            tradeBottleneckRatio: 0,
+            tradeProductionBonus: 0,
+
+            hasTradeBottleneck: function(costData)
+            {
+                var mostExpensive = 0;
+                for (var i = 1; i < costData.prices.length; ++i)
+                {
+                    if (costData.prices[i].time > costData.prices[mostExpensive])
+                    {
+                        mostExpensive = i;
+                    }
+                }
+                var exp = costData.prices[mostExpensive];
+                if (exp.method == 'Trade') { return true; }
+                else if (exp.hasOwnProperty('dependencies'))
+                {
+                    return this.hasTradeBottleneck(exp.dependencies);
+                }
+                else
+                {
+                    return false;
+                }
+            },
+            prepare: function()
+            {
+                var pp = ajk.analysis.previousPriority;
+                if (pp.length == 0)
+                {
+                    this.tradeBottleneckRatio = 0;
+                    this.tradeProductionBonus = 0;
+                    return;
+                }
+
+                var numTradeBottlenecks = 0;
+                for (var i = 0; i < pp.length; ++i)
+                {
+                    if (this.hasTradeBottleneck(ajk.analysis.data[pp[i]].costData))
+                    {
+                        numTradeBottlenecks += 1;
+                    }
+                }
+                ajk.log.debug('Found ' + numTradeBottlenecks + ' / ' + pp.length + ' items are bottlenecked on trading');
+                this.tradeBottleneckRatio = (numTradeBottlenecks / pp.length);
+                this.tradeProductionBonus = this.tradeBottleneckRatio * this.tradeProductionBonusBase;
+            },
+            modifyItem: function(itemKey)
+            {
+                var costData = ajk.analysis.data[itemKey].costData;
+
+                // Apply an across-the board penalty for any item that it primarily bottlenecked by a resource that is being traded for
+                if (this.hasTradeBottleneck(costData))
+                {
+                    ajk.log.detail('Penalizing ' + itemKey + ' because it uses trading to fulfill its resource costs');
+                    ajk.analysis.modifyWeight(itemKey, this.tradePenalty, 'uses trading');
+                }
+                else if (ajk.cache.isProducerOf(itemKey, 'trade'))
+                {
+                    ajk.log.detail('Prioritizing ' + itemKey + ' because it provides trade bonuses');
+                    ajk.analysis.modifyWeight(itemKey, this.tradeProductionBonus, 'boosts trade');
                 }
             }
         }
@@ -1126,6 +1204,7 @@ ajk = {
                 ajk.adjustment.reinforceTopPriority,
                 ajk.adjustment.weightedDemandScaling,
                 ajk.adjustment.tabDiscovery,
+                ajk.adjustment.tradingModule,
             ];
         },
 
@@ -1230,7 +1309,7 @@ ajk = {
                     });
                 }
 
-                var costData = this.analyzeCostProduction(craftPrices);
+                var costData = this.analyzeCostProduction(modifiedCraftPrices);
                 if (costData.time < productionData.time)
                 {
                     ajk.log.trace('Crafting is more effective');
@@ -1288,7 +1367,7 @@ ajk = {
             var costData = this.analyzeCostProduction(item.controller.getPrices(item.model));
             var modifier = Math.log(costData.time + 1);
             ajk.log.detail('It will be ' + costData.time + ' ticks until there are enough resources for ' + itemName + ' (modifier ' + modifier + ')');
-            this.modifyWeight(itemName, modifier, null);
+            this.modifyWeight(itemName, modifier, 'purchase time');
             this.data[itemName].costData = costData;
         },
 
@@ -1481,7 +1560,12 @@ ajk = {
                 {
                      if (ajk.trade.tradeWith(price.tradeRace, price.trades))
                      {
-                        allSucceeded &= (gamePage.resPool.get(price.name).value >= price.amount);
+                        var requirementMet = (gamePage.resPool.get(price.name).value >= price.amount);
+                        if (!requirementMet)
+                        {
+                            ajk.log.debug('Trading failed to satisfy expected requirements');
+                        }
+                        allSucceeded &= requirementMet;
                      }
                      else
                      {
@@ -1774,18 +1858,18 @@ ajk = {
                     {
                         var minutes = Math.floor(timeLeft % 60);
                         timeLeft = Math.floor(timeLeft / 60);
-                        timeString += ('0' + minutes).slice(-2) + 'm ';
+                        timeString = ('0' + minutes).slice(-2) + 'm ' + timeString;
 
                         if (timeLeft > 0)
                         {
                             var hours = Math.floor(timeLeft % 24);
                             timeLeft = Math.floor(timeLeft / 24);
-                            timeString += ('0' + hours).slice(-2) + 'h ';
+                            timeString = ('0' + hours).slice(-2) + 'h ' + timeString;
 
                             if (timeLeft > 0)
                             {
                                 var days = Math.floor(timeLeft);
-                                timeString += ('0' + days).slice(-2) + 'd ';
+                                timeString = ('0' + days).slice(-2) + 'd ' + timeString;
                             }
                         }
                     }
@@ -1940,6 +2024,8 @@ ajk = {
             this.simulateTick();
             this.tickThread = setInterval(function() { ajk.core.tick(); }, this.tickFrequency * 1000);
         }
+
+        $('#tickToggle')[0].checked = doTick;
     }
 }
 
