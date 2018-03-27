@@ -503,6 +503,23 @@ ajk = {
     {
         explorationDemandWeight: 5,
 
+        availableViaTrade: function(resourceName)
+        {
+            for (var i = 0; i < gamePage.diplomacy.races.length; ++i)
+            {
+                var race = gamePage.diplomacy.races[i];
+                if (!race.unlocked) { continue; }
+                for (var j = 0; j < race.sells.length; ++j)
+                {
+                    if (race.sells[j].name == resourceName)
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        },
+
         getTradeAmountFor: function(raceName, resourceName)
         {
             if (raceName == 'zebras' && resourceName == 'titanium')
@@ -811,6 +828,10 @@ ajk = {
                 }
                 return true;
             }
+            if (ajk.trade.availableViaTrade(resourceName))
+            {
+                return true;
+            }
             return false;
         },
 
@@ -823,35 +844,24 @@ ajk = {
             var resource = gamePage.resPool.get(price.name);
             if (resource.unlocked)
             {
-                var minTicks = Math.max(0, (price.val - resource.value) / resource.perTickCached);
-                ajk.log.trace('Default per-tick production will take ' + minTicks + ' ticks');
-                productionData.method = 'PerTick';
-                productionData.time = minTicks;
+                var minTicks = (price.val - resource.value) / this.getProductionOf(price.name);
+                if (minTicks >= 0)
+                {
+                    ajk.log.trace('Default per-tick production will take ' + minTicks + ' ticks');
+                    productionData.method = 'PerTick';
+                    productionData.time = minTicks;
+                }
+                else
+                {
+                    productionData.method = 'PerTick';
+                    productionData.time = Infinity;
+                }
             }
             else
             {
                 ajk.log.trace(price.name + ' is locked, perhaps we can craft it...');
                 productionData.method = 'Locked';
                 productionData.time = Infinity;
-            }
-
-            if (this.huntingData.allowHunting && (resource.name == 'furs' || resource.name == 'ivory'))
-            {
-                var perTick = this.huntingData.expectedPerTick[resource.name];
-                var avgTicks = price.val / (perTick + resource.perTickCached);
-                ajk.log.trace('Per-tick production augmented with expected hunting results will take ' + avgTicks + ' ticks');
-                productionData.method = 'PerTickPlusHunting';
-                productionData.time = avgTicks;
-                var catpowerCost = {
-                    time: avgTicks,
-                    prices: [{
-                        method: 'PerTick',
-                        time: avgTicks,
-                        name: 'manpower',
-                        val: avgTicks / (this.huntingData.avgHuntsPerTick * 100)
-                    }]
-                };
-                productionData.dependencies = catpowerCost;
             }
 
             if (resource.craftable && resource.name != 'wood')
@@ -968,7 +978,12 @@ ajk = {
             {
                 return this.productionOutput[resource]();
             }
-            return gamePage.resPool.get(resource).perTickCached;
+            var base = gamePage.getResourcePerTick(resource) + gamePage.getResourcePerTickConvertion(resource);
+            if (this.huntingData.expectedPerTick.hasOwnProperty(resource))
+            {
+                base += this.huntingData.expectedPerTick[resource];
+            }
+            return base;
         },
 
         reset: function()
@@ -976,9 +991,10 @@ ajk = {
             this.previousDemand = jQuery.extend({}, this.demand);
             this.demand = {};
 
+            // TODO - Solve the problem of other catpower consumers interfering with this metric
             this.huntingData.allowHunting = gamePage.village.getJob('hunter').unlocked;
             this.huntingData.expectedPerTick = {};
-            var avgHuntsPerTick = gamePage.resPool.get('manpower').perTickCached / 100;
+            var avgHuntsPerTick = this.getProductionOf('manpower') / 100;
             var hunterRatio = gamePage.getEffect('hunterRatio') + 1;
 
             var expectedFursPerHunt = 39.5 + ((65 * (hunterRatio - 1)) / 2);
@@ -1166,7 +1182,7 @@ ajk = {
             if (free == 0) { return; }
 
             // If catnip production is dipping, this cat is a farmer
-            if (gamePage.resPool.get('catnip').perTickCached <= 0)
+            if (ajk.resources.getProductionOf('catnip'))
             {
                 this.internal.assign('farmer');
                 return;
