@@ -198,17 +198,51 @@ ajk = {
         error:  function(message)
         {
             ajk.shouldTick(false);
+            this.logInternal(message, this.errorLevel);
             if (this.detailedLogsOnError)
             {
                 this.flush(true);
             }
-            this.logInternal(message, this.errorLevel);
         },
 
         updateLevel: function()
         {
             var newValue = parseInt($('#logLevelSelect')[0].value);
             this.logLevel = newValue;
+        }
+    },
+
+    timer:
+    {
+        start: function(title)
+        {
+            return {
+                title: title,
+                timestamps: [
+                    ['Start', performance.now()]
+                ],
+                longestLabel: 0
+            };
+        },
+
+        interval: function(data, label)
+        {
+            data.timestamps.push([label, performance.now()]);
+            data.longestLabel = Math.max(data.longestLabel, label.length);
+        },
+
+        end: function(data, label)
+        {
+            this.interval(data, label);
+
+            ajk.log.debug(data.title);
+            ajk.log.indent();
+            for (var i = 1; i < data.timestamps.length; ++i)
+            {
+                var delta = data.timestamps[i][1] - data.timestamps[i - 1][1];
+                ajk.log.debug(data.timestamps[i][0].padEnd(data.longestLabel) + delta.toFixed(1).padStart(8) + ' ms');
+            }
+            ajk.log.unindent();
         }
     },
 
@@ -411,10 +445,17 @@ ajk = {
         tradeShip: function()
         {
             ajk.ui.switchToTab('Workshop');
-            var gameTS = gamePage.workshop.getCraft('ship');
+
+            var metadata = jQuery.extend({}, gamePage.workshop.getCraft('ship'));
+            metadata.val = gamePage.resPool.get('ship').value;
+
             var itemData = {
                 controller:
                 {
+                    getPrices: function()
+                    {
+                        return gamePage.workshop.getCraft('ship').prices;
+                    },
                     hasResources: function()
                     {
                         return (gamePage.workshop.getCraftAllCount('ship') > 0);
@@ -429,7 +470,7 @@ ajk = {
                 },
                 model:
                 {
-                    metadata: gameTS
+                    metadata: metadata
                 }
             };
             ajk.ui.switchToTab(null);
@@ -512,15 +553,15 @@ ajk = {
             }
             if (chosenRace == null) { return null; }
 
+            var numTradesRequired = Math.ceil(price.val / raceAmount);
             var prices = [];
             for (var i = 0; i < chosenRace.buys.length; ++i)
             {
                 prices.push({
                     name: chosenRace.buys[i].name,
-                    val: chosenRace.buys[i].val
+                    val: chosenRace.buys[i].val * numTradesRequired
                 });
             }
-            var numTradesRequired = Math.ceil(raceAmount / price.val);
             var requiredManpower = numTradesRequired * 50;
             var requiredGold = numTradesRequired * 15;
             prices.push({
@@ -1236,6 +1277,12 @@ ajk = {
                 var numTradeBottlenecks = 0;
                 for (var i = 0; i < pp.length; ++i)
                 {
+                    var ppData = ajk.analysis.data[pp[i]];
+                    if (typeof ppData === 'undefined')
+                    {
+                        ajk.log.warn('No data found for previous priority ' + pp[i]);
+                        continue;
+                    }
                     if (this.hasTradeBottleneck(ajk.analysis.data[pp[i]].costData))
                     {
                         numTradeBottlenecks += 1;
@@ -1271,15 +1318,11 @@ ajk = {
             prepare: function() {},
             modifyItem: function(itemKey)
             {
-                var item = ajk.analysis.data[itemKey].item;
+                var costData = ajk.analysis.data[itemKey].costData;
+                if (typeof costData === 'undefined') { ajk.log.warn('No cost data found for ' + itemKey); }
+                var modifier = Math.log(ajk.analysis.data[itemKey].costData.time + 1) * this.priceModifier;
+                ajk.analysis.modifyWeight(itemKey, modifier, null);
 
-                ajk.log.trace('Determining how to best produce ' + itemKey + ' and how long it will take');
-                var costData = ajk.resources.analyzeCostProduction(item.controller.getPrices(item.model));
-                var modifier = Math.log(costData.time + 1) * this.priceModifier;
-
-                ajk.log.detail('It will be ' + costData.time + ' ticks until there are enough resources for ' + itemKey + ' (modifier ' + modifier + ')');
-                ajk.analysis.modifyWeight(itemKey, modifier, 'purchase time');
-                ajk.analysis.data[itemKey].costData = costData;
             },
         }
     },
@@ -1393,34 +1436,41 @@ ajk = {
                 if (!items[i].model.hasOwnProperty('metadata')) { continue; }
 
                 var mData = items[i].model.metadata;
-                var itemName = mData.name;
+                var itemKey = mData.name;
                 if (!mData.unlocked) { continue; }
                 if (mData.hasOwnProperty('researched') && mData.researched) { continue; }
 
-                if (!this.data.hasOwnProperty(itemName))
+                var itemPrices = items[i].controller.getPrices(items[i].model);
+                ajk.log.trace('Determining how to best produce ' + itemKey + ' and how long it will take');
+                var costData = ajk.resources.analyzeCostProduction(itemPrices);
+                ajk.log.detail('It will be ' + costData.time + ' ticks until there are enough resources for ' + itemKey);
+
+                if (!this.data.hasOwnProperty(itemKey))
                 {
-                    this.data[itemName] = {};
+                    this.data[itemKey] = {};
                 }
-                this.data[itemName].item = items[i];
-                this.data[itemName].missingMaxResources = false;
+                this.data[itemKey].item = items[i];
+                this.data[itemKey].missingMaxResources = false;
+                this.data[itemKey].costData = costData;
 
                 if (mData.hasOwnProperty('effects'))
                 {
                     var overConsumption = false;
                     for (var effectKey in mData.effects)
                     {
+                        if (mData.effects[effectKey] == 0) { continue; }
                         var consumedResource = ajk.cache.getResourceConsumedByEffect(effectKey);
                         if (consumedResource == null) { continue; }
                         if (ajk.resources.getProductionOf(consumedResource) - mData.effects[effectKey] <= 0)
                         {
-                            ajk.log.detail('Production of ' + consumedResource + ' does not meet the requirements for another ' + itemName);
+                            ajk.log.detail('Production of ' + consumedResource + ' does not meet the requirements for another ' + itemKey);
                             overConsumption = true;
-                            outputDemand[consumedResource] = true;
+                            this.outputDemand[consumedResource] = true;
                         }
                     }
                     if (overConsumption)
                     {
-                        this.data[itemName].missingMaxResources = true;
+                        this.data[itemKey].missingMaxResources = true;
                         continue;
                     }
                 }
@@ -1428,29 +1478,28 @@ ajk = {
                 if (!mData.hasOwnProperty('val'))
                 {
                     // Favor one-shots
-                    ajk.log.debug('Prioritizing ' + itemName + ' as a one-shot');
-                    this.modifyWeight(itemName, this.oneShotModifier, 'one-shot');
+                    ajk.log.debug('Prioritizing ' + itemKey + ' as a one-shot');
+                    this.modifyWeight(itemKey, this.oneShotModifier, 'one-shot');
                 }
 
                 var missingMaxResources = false;
-                var prices = items[i].controller.getPrices(items[i].model);
-                for (var j = 0; j < prices.length; ++j)
+                for (var j = 0; j < itemPrices.length; ++j)
                 {
-                    var resource = gamePage.resPool.get(prices[j].name);
-                    if (!ajk.resources.available(prices[j].name))
+                    var resource = gamePage.resPool.get(itemPrices[j].name);
+                    if (!ajk.resources.available(itemPrices[j].name))
                     {
                         missingMaxResources = true;
                     }
-                    else if (resource.maxValue != 0 && resource.maxValue < prices[j].val)
+                    else if (resource.maxValue != 0 && resource.maxValue < itemPrices[j].val)
                     {
-                        ajk.log.detail('Max ' + resource.name + ' lacking to produce ' + itemName);
+                        ajk.log.detail('Max ' + resource.name + ' lacking to produce ' + itemKey);
                         missingMaxResources = true;
-                        this.capacityDemand[prices[j].name] = true;
+                        this.capacityDemand[itemPrices[j].name] = true;
                     }
                 }
                 if (missingMaxResources)
                 {
-                    this.data[itemName].missingMaxResources = true;
+                    this.data[itemKey].missingMaxResources = true;
                 }
             }
         },
@@ -1529,181 +1578,216 @@ ajk = {
         religionTab: gamePage.tabs[5],
         spaceTab: gamePage.tabs[6],
 
-        successes: 0,
-
-        analyze: function()
+        internal:
         {
-            ajk.analysis.reset();
-            ajk.analysis.preanalysis();
+            successes: 0,
 
-            ajk.analysis.analyzeItems(ajk.customItems.get());
-
-            ajk.ui.switchToTab('Bonfire');
-            ajk.analysis.analyzeItems(this.bonfireTab.buttons);
-
-            ajk.ui.switchToTab('Sciene');
-            if (this.scienceTab.visible)
+            analyze: function()
             {
-                ajk.analysis.analyzeItems(this.scienceTab.buttons);
-            }
+                ajk.analysis.reset();
+                ajk.analysis.preanalysis();
 
-            ajk.ui.switchToTab('Workshop');
-            if (this.workshopTab.visible)
-            {
-                ajk.analysis.analyzeItems(this.workshopTab.buttons);
-            }
+                ajk.analysis.analyzeItems(ajk.customItems.get());
 
-            ajk.analysis.analyzeResults();
-            ajk.analysis.postAnalysisPass();
-            ajk.ui.switchToTab(null);
-        },
+                ajk.ui.switchToTab('Bonfire');
+                ajk.analysis.analyzeItems(ajk.core.bonfireTab.buttons);
 
-        operateOnCostData: function(costData)
-        {
-            ajk.log.indent();
-            var allSucceeded = true;
-            for (var j = costData.prices.length - 1; j >= 0; --j)
-            {
-                var price = costData.prices[j];
-                ajk.log.detail('Operating on cost data of ' + price.name);
-                if (price.hasOwnProperty('dependencies'))
+                ajk.ui.switchToTab('Sciene');
+                if (ajk.core.scienceTab.visible)
                 {
-                    ajk.log.trace('Diving into dependencies');
-                    allSucceeded &= this.operateOnCostData(costData.prices[j].dependencies);
+                    ajk.analysis.analyzeItems(ajk.core.scienceTab.buttons);
                 }
-                if (price.method == 'Trade')
-                {
-                     if (ajk.trade.tradeWith(price.tradeRace, price.trades))
-                     {
-                        var requirementMet = (gamePage.resPool.get(price.name).value >= price.amount);
-                        if (!requirementMet)
-                        {
-                            ajk.log.debug('Trading failed to satisfy expected requirements');
-                        }
-                        allSucceeded &= requirementMet;
-                     }
-                     else
-                     {
-                        allSucceeded = false;
-                     }
-                }
-                else if (price.method == 'Craft')
-                {
-                    allSucceeded &= ajk.workshop.craft(price.name, price.craftAmount);
-                }
-                else
-                {
-                    var resource = gamePage.resPool.get(costData.prices[j].name);
-                    var deficit = resource.value - costData.prices[j].val;
-                    var sufficient = false;
-                    if (resource.name == 'catnip')
-                    {
-                        sufficient = (deficit >= ajk.resources.catnipBuffer());
-                    }
-                    else
-                    {
-                        sufficient = (deficit >= 0);
-                    }
-                    if (!sufficient)
-                    {
-                        ajk.log.detail('Waiting on ' + resource.name);
-                    }
-                    else
-                    {
-                        ajk.log.trace('Sufficient quantity exists (deficit: ' + deficit + ')');
-                    }
-                    allSucceeded &= sufficient;
-                }
-            }
-            ajk.log.unindent();
-            return allSucceeded;
-        },
 
-        operateOnPriority: function()
-        {
-            if (ajk.analysis.shouldExplore)
-            {
-                ajk.ui.switchToTab('Trade');
-                var explore = gamePage.diplomacyTab.exploreBtn;
-                if (explore.controller.hasResources(explore.model))
+                ajk.ui.switchToTab('Workshop');
+                if (ajk.core.workshopTab.visible)
                 {
-                    ajk.log.debug('Attempting to discover new race');
-                    if (!ajk.simulate)
-                    {
-                        explore.controller.buyItem(explore.model, {}, function(result) {
-                            if (result)
-                            {
-                                ajk.log.info('Unlocked new race');
-                            }
-                            else
-                            {
-                                ajk.log.error('Failed to unlock new race');
-                            }
-                            // TODO - Figure out why this function is called twice with different arguments every time we try to discover a new race
-                            ajk.log.debugQueue.push(result);
-                        });
-                    }
+                    ajk.analysis.analyzeItems(ajk.core.workshopTab.buttons);
                 }
-                else
-                {
-                    ajk.log.debug('Waiting on catpower for exploration');
-                }
+
+                ajk.analysis.analyzeResults();
+                ajk.analysis.postAnalysisPass();
                 ajk.ui.switchToTab(null);
-            }
+            },
 
-            for (var i = 0; i < ajk.analysis.filteredPriorityList.length; ++i)
+            operateOnCostData: function(costData)
             {
-                var priority = ajk.analysis.filteredPriorityList[i];
-                ajk.log.debug('Attempting to act on ' + priority + ' (weight ' + ajk.analysis.data[priority].weight + ')');
-
-                var costData = ajk.analysis.data[priority].costData;
-                if (this.operateOnCostData(costData))
+                ajk.log.indent();
+                var allSucceeded = true;
+                for (var j = costData.prices.length - 1; j >= 0; --j)
                 {
-                    ajk.log.detail('Cost operations succeeded, acting');
-                    var itemData = ajk.analysis.data[priority];
-                    if (itemData.item.controller.hasResources(itemData.item.model))
+                    var price = costData.prices[j];
+                    ajk.log.detail('Operating on cost data of ' + price.name);
+                    if (price.hasOwnProperty('dependencies'))
                     {
-                        this.successes += 1;
+                        ajk.log.trace('Diving into dependencies');
+                        allSucceeded &= this.operateOnCostData(costData.prices[j].dependencies);
+                    }
+                    if (price.method == 'Trade')
+                    {
+                         if (ajk.trade.tradeWith(price.tradeRace, price.trades))
+                         {
+                            var requirementMet = (gamePage.resPool.get(price.name).value >= price.amount);
+                            if (!requirementMet)
+                            {
+                                ajk.log.debug('Trading failed to satisfy expected requirements');
+                            }
+                            allSucceeded &= requirementMet;
+                         }
+                         else
+                         {
+                            allSucceeded = false;
+                         }
+                    }
+                    else if (price.method == 'Craft')
+                    {
+                        allSucceeded &= ajk.workshop.craft(price.name, price.craftAmount);
+                    }
+                    else
+                    {
+                        var resource = gamePage.resPool.get(costData.prices[j].name);
+                        var deficit = resource.value - costData.prices[j].val;
+                        var sufficient = false;
+                        if (resource.name == 'catnip')
+                        {
+                            sufficient = (deficit >= ajk.resources.catnipBuffer());
+                        }
+                        else
+                        {
+                            sufficient = (deficit >= 0);
+                        }
+                        if (!sufficient)
+                        {
+                            ajk.log.detail('Waiting on ' + resource.name);
+                        }
+                        else
+                        {
+                            ajk.log.trace('Sufficient quantity exists (deficit: ' + deficit + ')');
+                        }
+                        allSucceeded &= sufficient;
+                    }
+                }
+                ajk.log.unindent();
+                return allSucceeded;
+            },
+
+            operateOnPriority: function()
+            {
+                if (ajk.analysis.shouldExplore)
+                {
+                    ajk.ui.switchToTab('Trade');
+                    var explore = gamePage.diplomacyTab.exploreBtn;
+                    if (explore.controller.hasResources(explore.model))
+                    {
+                        ajk.log.debug('Attempting to discover new race');
                         if (!ajk.simulate)
                         {
-                            itemData.item.controller.buyItem(itemData.item.model, {}, function(result) {
+                            explore.controller.buyItem(explore.model, {}, function(result) {
                                 if (result)
                                 {
-                                    ajk.log.info('Purchased ' + priority);
+                                    ajk.log.info('Unlocked new race');
                                 }
                                 else
                                 {
-                                    ajk.log.error('Failed to purchase ' + priority);
+                                    ajk.log.error('Failed to unlock new race');
                                 }
+                                // TODO - Figure out why this function is called twice with different arguments every time we try to discover a new race
+                                ajk.log.debugQueue.push(result);
                             });
                         }
                     }
                     else
                     {
-                        ajk.log.error('Item has insufficient resources, even after operating on costs successfully');
+                        ajk.log.debug('Waiting on catpower for exploration');
+                    }
+                    ajk.ui.switchToTab(null);
+                }
+
+                for (var i = 0; i < ajk.analysis.filteredPriorityList.length; ++i)
+                {
+                    var priority = ajk.analysis.filteredPriorityList[i];
+                    ajk.log.debug('Attempting to act on ' + priority + ' (weight ' + ajk.analysis.data[priority].weight + ')');
+
+                    var costData = ajk.analysis.data[priority].costData;
+                    if (this.operateOnCostData(costData))
+                    {
+                        ajk.log.detail('Cost operations succeeded, acting');
+                        var itemData = ajk.analysis.data[priority];
+
+                        // Make sure the model is up-to-date (that way if we purchased something this tick already, we don't try to purchase something else we no longer have resources for)
+                        itemData.item.update();
+                        if (itemData.item.controller.hasResources(itemData.item.model))
+                        {
+                            this.successes += 1;
+                            if (!ajk.simulate)
+                            {
+                                itemData.item.controller.buyItem(itemData.item.model, {}, function(result) {
+                                    if (result)
+                                    {
+                                        ajk.log.info('Purchased ' + priority);
+                                    }
+                                    else
+                                    {
+                                        ajk.log.error('Failed to purchase ' + priority);
+                                    }
+                                });
+                            }
+                        }
+                        else if (!ajk.simulate)
+                        {
+                            ajk.log.error('Item has insufficient resources, even after operating on costs successfully');
+                        }
                     }
                 }
-            }
+            },
+
+            unsafeTick: function()
+            {
+                var timerData = ajk.timer.start('Overall Tick Execution');
+                this.successes = 0;
+
+                ajk.cache.init();
+                ajk.timer.interval(timerData, 'Cache Initialization');
+
+                this.analyze();
+                ajk.timer.interval(timerData, 'Analysis');
+
+                this.operateOnPriority();
+                ajk.timer.interval(timerData, 'Priority Operations');
+
+                ajk.resources.convert();
+                ajk.timer.interval(timerData, 'Resource Conversion');
+
+                ajk.ui.refreshTables();
+                ajk.timer.interval(timerData, 'UI');
+
+                ajk.jobs.assignFreeKittens();
+                ajk.timer.end(timerData, 'Job Assignment');
+            },
         },
 
         tick: function()
         {
             var timestamp = new Date();
             ajk.log.debug('Starting tick at ' + timestamp.toUTCString());
-            var t0 = performance.now();
-            this.successes = 0;
-
-            ajk.cache.init();
-            this.analyze();
-            this.operateOnPriority();
-            ajk.resources.convert();
-            ajk.ui.refreshTables();
-            ajk.jobs.assignFreeKittens();
+            try
+            {
+                this.internal.unsafeTick();
+            }
+            catch (e)
+            {
+                ajk.log.error('Error encountered during tick\n' + e.stack);
+            }
             ajk.log.flush(this.successes > 0 && ajk.log.detailedLogsOnSuccess);
+        },
 
-            var t1 = performance.now();
-            ajk.log.debug('Tick executed in ' + (t1 - t0) + ' ms');
-        }
+        simulateTick: function()
+        {
+            ajk.log.info('Simulating tick');
+            var pSimulate = ajk.simulate;
+            ajk.simulate = true;
+            this.tick();
+            ajk.simulate = pSimulate;
+        },
     },
 
     jobs:
@@ -2060,15 +2144,6 @@ ajk = {
         }
     },
 
-    simulateTick: function()
-    {
-        this.log.info('Simulating 1 tick to populate previous values');
-        var pSimulate = ajk.simulate;
-        ajk.simulate = true;
-        ajk.core.tick();
-        ajk.simulate = pSimulate;
-    },
-
     shouldTick: function(doTick)
     {
         if (this.tickThread != null)
@@ -2088,7 +2163,7 @@ ajk = {
         if (doTick)
         {
             this.log.info('Ticking every ' + this.tickFrequency + ' seconds');
-            this.simulateTick();
+            ajk.core.simulateTick();
             this.tickThread = setInterval(function() { ajk.core.tick(); }, this.tickFrequency * 1000);
         }
 
@@ -2097,4 +2172,4 @@ ajk = {
 }
 
 ajk.ui.createUI();
-ajk.simulateTick();
+ajk.core.simulateTick();
