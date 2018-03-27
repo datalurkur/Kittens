@@ -835,7 +835,7 @@ ajk = {
                         method: 'PerTick',
                         time: avgTicks,
                         name: 'manpower',
-                        val: (avgTicks * this.huntingData.avgHuntsPerTick) / 100
+                        val: avgTicks / (this.huntingData.avgHuntsPerTick * 100)
                     }]
                 };
                 productionData.dependencies = catpowerCost;
@@ -2042,6 +2042,7 @@ ajk = {
             convertTicksToTimeString: function(ticks)
             {
                 if (ticks == 0) { return 'now'; }
+                if (ticks == Infinity) { return 'forever'; }
                 var timeLeft = Math.ceil(ticks / 5);
                 var timeString = '';
 
