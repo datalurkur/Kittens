@@ -471,7 +471,8 @@ ajk = {
                 model:
                 {
                     metadata: metadata
-                }
+                },
+                update: function() {}
             };
             ajk.ui.switchToTab(null);
             return itemData;
@@ -769,6 +770,13 @@ ajk = {
             'resStatis': true
         },
 
+        huntingData:
+        {
+            allowHunting: false,
+            avgHuntsPerTick: 0,
+            expectedPerTick: {},
+        },
+
         demand: {},
         previousDemand: {},
 
@@ -812,6 +820,25 @@ ajk = {
                 ajk.log.trace(price.name + ' is locked, perhaps we can craft it...');
                 productionData.method = 'Locked';
                 productionData.time = Infinity;
+            }
+
+            if (this.huntingData.allowHunting && (resource.name == 'furs' || resource.name == 'ivory'))
+            {
+                var perTick = this.huntingData.expectedPerTick[resource.name];
+                var avgTicks = price.val / (perTick + resource.perTickCached);
+                ajk.log.trace('Per-tick production augmented with expected hunting results will take ' + avgTicks + ' ticks');
+                productionData.method = 'PerTickPlusHunting';
+                productionData.time = avgTicks;
+                var catpowerCost = {
+                    time: avgTicks,
+                    prices: [{
+                        method: 'PerTick',
+                        time: avgTicks,
+                        name: 'manpower',
+                        val: (avgTicks * this.huntingData.avgHuntsPerTick) / 100
+                    }]
+                };
+                productionData.dependencies = catpowerCost;
             }
 
             if (resource.craftable && resource.name != 'wood')
@@ -935,6 +962,20 @@ ajk = {
         {
             this.previousDemand = jQuery.extend({}, this.demand);
             this.demand = {};
+
+            this.huntingData.allowHunting = gamePage.village.getJob('hunter').unlocked;
+            this.huntingData.expectedPerTick = {};
+            var avgHuntsPerTick = gamePage.resPool.get('manpower').perTickCached / 100;
+            var hunterRatio = gamePage.getEffect('hunterRatio') + 1;
+
+            var expectedFursPerHunt = 39.5 + ((65 * (hunterRatio - 1)) / 2);
+            this.huntingData.expectedPerTick['furs'] = expectedFursPerHunt * avgHuntsPerTick;
+
+            var ivoryChance = (44 + (2 * hunterRatio)) / 100;
+            var ivoryAmount = 24.5 + ((40 * (hunterRatio - 1)) / 2);
+            this.huntingData.expectedPerTick['ivory'] = ivoryChance * ivoryAmount * avgHuntsPerTick;
+
+            this.huntingData.avgHuntsPerTick = avgHuntsPerTick;
         },
 
         getCraftCost: function(craft, resource)
@@ -1280,7 +1321,6 @@ ajk = {
                     var ppData = ajk.analysis.data[pp[i]];
                     if (typeof ppData === 'undefined')
                     {
-                        ajk.log.warn('No data found for previous priority ' + pp[i]);
                         continue;
                     }
                     if (this.hasTradeBottleneck(ajk.analysis.data[pp[i]].costData))
@@ -1581,6 +1621,7 @@ ajk = {
         internal:
         {
             successes: 0,
+            explorationSuccess: false,
 
             analyze: function()
             {
@@ -1685,13 +1726,14 @@ ajk = {
                                 if (result)
                                 {
                                     ajk.log.info('Unlocked new race');
+                                    // This is sort of a hack, but fuck if I know why this gets called twice on success with both true and false
+                                    this.explorationSuccess = true;
                                 }
-                                else
+                                else if (!this.explorationSuccess)
                                 {
                                     ajk.log.error('Failed to unlock new race');
+                                    this.explorationSuccess = false;
                                 }
-                                // TODO - Figure out why this function is called twice with different arguments every time we try to discover a new race
-                                ajk.log.debugQueue.push(result);
                             });
                         }
                     }
@@ -1893,7 +1935,6 @@ ajk = {
                     .accordion:hover
                     {
                         color: red;
-                        text-decoration: underline overline dotted red;
                     }
                     .inlineAccordion:hover
                     {
@@ -1973,20 +2014,108 @@ ajk = {
                 <input type="button" id="signout-button" value="Sign Out" onclick="ajk.backup.handleSignOutClick();" style="width:100px">
                 <br/>`,
 
+            panelState: {},
+
             togglePanel: function(panel)
             {
-                panel.style.display = (panel.style.display == 'none' ? 'block' : 'none');
+                var collapsed = (panel.style.display == 'none');
+                panel.style.display = (collapsed ? 'block' : 'none');
+                this.panelState[panel.id] = !collapsed;
             },
 
             createCollapsiblePanel: function(parent, id, title, content, isInline, startCollapsed)
             {
+                var panelId = id + 'Panel';
+                if (this.panelState.hasOwnProperty(panelId))
+                {
+                    startCollapsed = this.panelState[panelId];;
+                }
                 var classHeader = (isInline ? 'inlineAccordion' : 'accordion');
                 var html = '';
-                html += '<button class="' + classHeader + '" id="' + id + 'Button" onclick="ajk.ui.internal.togglePanel($(\'#' + id + 'Panel\')[0]);">' + title + '</button><br/>';
-                html += '<div class="' + classHeader + 'Panel" id="' + id + 'Panel" style="display:' + (startCollapsed ? 'none' : 'block') + '">';
+                html += '<button class="' + classHeader + '" id="' + id + 'Button" onclick="ajk.ui.internal.togglePanel($(\'#' + panelId + '\')[0]);">' + title + '</button><br/>';
+                html += '<div class="' + classHeader + 'Panel" id="' + panelId + '" style="display:' + (startCollapsed ? 'none' : 'block') + '">';
                 html += content;
                 html += '</div>';
                 parent.append(html);
+            },
+
+            convertTicksToTimeString: function(ticks)
+            {
+                if (ticks == 0) { return 'now'; }
+                var timeLeft = Math.ceil(ticks / 5);
+                var timeString = '';
+
+                var seconds = Math.floor(timeLeft % 60);
+                timeLeft = Math.floor(timeLeft / 60);
+                timeString += ('0' + seconds).slice(-2) + 's';
+
+                if (timeLeft > 0)
+                {
+                    var minutes = Math.floor(timeLeft % 60);
+                    timeLeft = Math.floor(timeLeft / 60);
+                    timeString = ('0' + minutes).slice(-2) + 'm ' + timeString;
+
+                    if (timeLeft > 0)
+                    {
+                        var hours = Math.floor(timeLeft % 24);
+                        timeLeft = Math.floor(timeLeft / 24);
+                        timeString = ('0' + hours).slice(-2) + 'h ' + timeString;
+
+                        if (timeLeft > 0)
+                        {
+                            var days = Math.floor(timeLeft);
+                            timeString = ('0' + days).slice(-2) + 'd ' + timeString;
+                        }
+                    }
+                }
+
+                return timeString;
+            },
+
+            convertAmountToShortString: function(amount)
+            {
+                // kilo, mega, giga, tera, peta, exa, zetta, yotta
+                var postFixes = ['', 'k', 'M', 'P', 'T', 'P', 'E', 'Z', 'Y'];
+                index = 0;
+                while (amount > 1000 && index < postFixes.length - 1)
+                {
+                    amount /= 1000;
+                    index += 1;
+                }
+                var amountString = (index == 0) ? Math.ceil(amount) : amount.toFixed(2);
+                return amountString + postFixes[index];
+            },
+
+            convertCostDataToIndentedTable: function(costData, indent)
+            {
+                if (typeof indent === 'undefined')
+                {
+                    indent = 1;
+                }
+
+                var string = '';
+                for (var i = 0; i < costData.prices.length; ++i)
+                {
+                    var price = costData.prices[i];
+                    var methodString = 'Wait for';
+                    if (price.method == 'Trade')
+                    {
+                        methodString = 'Trade for';
+                    }
+                    else if (price.method == 'Craft')
+                    {
+                        methodString = 'Craft';
+                    }
+                    var amountString = this.convertAmountToShortString(price.val);
+                    var firstSpanString = methodString + ' ' + amountString + ' ' + price.name;
+                    var timeString = this.convertTicksToTimeString(price.time);
+                    string += '<span style="text-indent:' + (indent * 10) + 'px; display:inline-block">' + firstSpanString + '</span><span style="float:right">' + timeString + '</span><br/>';
+                    if (price.hasOwnProperty('dependencies'))
+                    {
+                        string += this.convertCostDataToIndentedTable(price.dependencies, indent + 1);
+                    }
+                }
+                return string;
             },
 
             refreshPriorityTable: function()
@@ -1998,34 +2127,19 @@ ajk = {
                     var itemKey = ajk.analysis.filteredPriorityList[i];
                     var itemWeight = ajk.analysis.data[itemKey].weight;
 
-                    var timeLeft = Math.ceil(ajk.analysis.data[itemKey].costData.time / 5);
-                    var timeString = '';
+                    var costData = ajk.analysis.data[itemKey].costData;
 
-                    var seconds = Math.floor(timeLeft % 60);
-                    timeLeft = Math.floor(timeLeft / 60);
-                    timeString += ('0' + seconds).slice(-2) + 's';
+                    var timeString = this.convertTicksToTimeString(costData.time);
 
-                    if (timeLeft > 0)
-                    {
-                        var minutes = Math.floor(timeLeft % 60);
-                        timeLeft = Math.floor(timeLeft / 60);
-                        timeString = ('0' + minutes).slice(-2) + 'm ' + timeString;
+                    var rowId = itemKey + 'Priority';
+                    var containerId = rowId + 'Details';
+                    var rowData = '<tr><td id="' + rowId + '"/></tr>';
+                    container.append(rowData);
 
-                        if (timeLeft > 0)
-                        {
-                            var hours = Math.floor(timeLeft % 24);
-                            timeLeft = Math.floor(timeLeft / 24);
-                            timeString = ('0' + hours).slice(-2) + 'h ' + timeString;
+                    var rowTitle = '<span>' + itemKey + '</span><span style="float:right">' + timeString + '</span>';
+                    var rowDetails = '<div style="color:rgb(128,128,128)">' + this.convertCostDataToIndentedTable(costData) + '</div>';
 
-                            if (timeLeft > 0)
-                            {
-                                var days = Math.floor(timeLeft);
-                                timeString = ('0' + days).slice(-2) + 'd ' + timeString;
-                            }
-                        }
-                    }
-
-                    container.append('<tr><td><span>' + itemKey + '</span></td><td style="text-align:right"><span>' + timeString + '</span></td></tr>');
+                    this.createCollapsiblePanel($('#' + rowId), containerId, rowTitle, rowDetails, true, true);
                 }
             },
 
