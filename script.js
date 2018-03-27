@@ -1125,6 +1125,75 @@ ajk = {
         }
     },
 
+    jobs:
+    {
+        internal:
+        {
+            assign: function(jobName)
+            {
+                if (!gamePage.village.getJob(jobName).unlocked) { return false; }
+                if (!ajk.simulate)
+                {
+                    ajk.log.debug('Kitten assigned to be a ' + jobName);
+                    gamePage.village.assignJob(gamePage.village.getJob(jobName));
+                }
+                return true;
+            }
+        },
+
+        reprioritize: function()
+        {
+
+        },
+
+        assignFreeKittens: function()
+        {
+            // This is a stopgap until I have actual reassignment
+            var free = gamePage.village.getFreeKittens();
+            if (free == 0) { return; }
+
+            // If catnip production is dipping, this cat is a farmer
+            if (gamePage.resPool.get('catnip').perTickCached <= 0)
+            {
+                this.internal.assign('farmer');
+                return;
+            }
+
+            var highestPri = ajk.analysis.filteredPriorityList[0];
+            if (typeof highestPri === 'undefined' || !ajk.analysis.data.hasOwnProperty(highestPri))
+            {
+                ajk.log.debug('Waiting to assign kitten to a job pending a clear priority');
+                return;
+            }
+
+            var bottlenecks = ajk.resources.getBottlenecksFor(ajk.analysis.data[highestPri].costData);
+            if (bottlenecks.length == 0)
+            {
+                ajk.log.debug('Waiting to assign kitten to a job pending a clear priority');
+                return;
+            }
+
+            var bottleneck = bottlenecks[0].name;
+            if (bottleneck == 'minerals' && this.internal.assign('miner')) { return; }
+            if (bottleneck == 'wood' && this.internal.assign('woodcutter')) { return; }
+            if (bottleneck == 'science' && this.internal.assign('scholar')) { return; }
+            if ((bottleneck == 'manpower' || bottleneck == 'furs' || bottleneck == 'ivory' || bottleneck == 'spice') && this.internal.assign('hunter')) { return; }
+            if ((bottleneck == 'coal' || bottleneck == 'gold') && this.internal.assign('geologist')) { return ;}
+            if (this.internal.assign('priest')) { return; }
+
+            ajk.log.debug('Bottleneck ' + bottleneck + ' demands no job that is mapped');
+        }
+    },
+
+    misc:
+    {
+        checkForObservationEvent: function()
+        {
+            var btn = gamePage.calendar.observeBtn;
+            if (btn != null) { btn.click(); }
+        }
+    },
+
     adjustment:
     {
         reinforceTopPriority:
@@ -1804,6 +1873,8 @@ ajk = {
 
                 ajk.jobs.assignFreeKittens();
                 ajk.timer.end(timerData, 'Job Assignment');
+
+                ajk.misc.checkForObservationEvent();
             },
         },
 
@@ -1832,65 +1903,6 @@ ajk = {
         },
     },
 
-    jobs:
-    {
-        internal:
-        {
-            assign: function(jobName)
-            {
-                if (!gamePage.village.getJob(jobName).unlocked) { return false; }
-                if (!ajk.simulate)
-                {
-                    ajk.log.debug('Kitten assigned to be a ' + jobName);
-                    gamePage.village.assignJob(gamePage.village.getJob(jobName));
-                }
-                return true;
-            }
-        },
-
-        reprioritize: function()
-        {
-
-        },
-
-        assignFreeKittens: function()
-        {
-            // This is a stopgap until I have actual reassignment
-            var free = gamePage.village.getFreeKittens();
-            if (free == 0) { return; }
-
-            // If catnip production is dipping, this cat is a farmer
-            if (gamePage.resPool.get('catnip').perTickCached <= 0)
-            {
-                this.internal.assign('farmer');
-                return;
-            }
-
-            var highestPri = ajk.analysis.filteredPriorityList[0];
-            if (typeof highestPri === 'undefined' || !ajk.analysis.data.hasOwnProperty(highestPri))
-            {
-                ajk.log.debug('Waiting to assign kitten to a job pending a clear priority');
-                return;
-            }
-
-            var bottlenecks = ajk.resources.getBottlenecksFor(ajk.analysis.data[highestPri].costData);
-            if (bottlenecks.length == 0)
-            {
-                ajk.log.debug('Waiting to assign kitten to a job pending a clear priority');
-                return;
-            }
-
-            var bottleneck = bottlenecks[0].name;
-            if (bottleneck == 'minerals' && this.internal.assign('miner')) { return; }
-            if (bottleneck == 'wood' && this.internal.assign('woodcutter')) { return; }
-            if (bottleneck == 'science' && this.internal.assign('scholar')) { return; }
-            if ((bottleneck == 'manpower' || bottleneck == 'furs' || bottleneck == 'ivory' || bottleneck == 'spice') && this.internal.assign('hunter')) { return; }
-            if ((bottleneck == 'coal' || bottleneck == 'gold') && this.internal.assign('geologist')) { return ;}
-            if (this.internal.assign('priest')) { return; }
-
-            ajk.log.debug('Bottleneck ' + bottleneck + ' demands no job that is mapped');
-        }
-    },
 
     ui:
     {
