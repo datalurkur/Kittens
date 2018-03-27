@@ -434,6 +434,19 @@ ajk = {
             return false;
         },
 
+        isStorerOf: function(itemKey, resourceName)
+        {
+            var storers = this.getStorersOfResource(resourceName);
+            for (var i = 0; i < storers.length; ++i)
+            {
+                if (storers[i] == itemKey)
+                {
+                    return true;
+                }
+            }
+            return false;
+        },
+
         init: function()
         {
             this.internal.buildEffectTables();
@@ -1196,6 +1209,7 @@ ajk = {
 
     adjustment:
     {
+        // Reduce churn and reinforce whatever was chosen as top priority based on resource production prioritization
         reinforceTopPriority:
         {
             topModifier: -5,
@@ -1246,6 +1260,7 @@ ajk = {
             },
         },
 
+        // Reward producers of in-demand resources
         weightedDemandScaling:
         {
             modWeight: 0.5,
@@ -1280,6 +1295,7 @@ ajk = {
             }
         },
 
+        // Reward anything that unlocks a new tab (eventually)
         tabDiscovery:
         {
             priorityWeight: -5,
@@ -1345,6 +1361,7 @@ ajk = {
             }
         },
 
+        // Penalize trading for resources slightly, but reward trade benefit producers if a lot of trade is in demand (read: titanium)
         tradingModule:
         {
             tradePenalty: 1,
@@ -1376,7 +1393,7 @@ ajk = {
             },
             prepare: function()
             {
-                var pp = ajk.analysis.previousPriority;
+                var pp = ajk.analysis.previousOrder;
                 if (pp.length == 0)
                 {
                     this.tradeBottleneckRatio = 0;
@@ -1419,6 +1436,7 @@ ajk = {
             }
         },
 
+        // Move more expensive items down the list
         priceRatioModule:
         {
             priceModifier: 0.5,
@@ -1433,6 +1451,67 @@ ajk = {
                 ajk.analysis.modifyWeight(itemKey, modifier, null);
 
             },
+        },
+
+        // If an item was prioritized heavily but lacked capacity, attempt to unblock it
+        capacityUnblocking:
+        {
+            priorityExtent: 5,
+            priorityFalloff: 0.3,
+            priorityReward: -3,
+
+            rewardMap: {},
+
+            prepare: function()
+            {
+                ajk.log.debug('Creating bounties for items blocked by missing resource capacity');
+                ajk.log.indent();
+
+                this.rewardMap = {};
+                var currentReward = this.priorityReward;
+                for (var i = 0; i < this.priorityExtent && i < ajk.analysis.previousOrder.length; ++i)
+                {
+                    var p = ajk.analysis.previousOrder[i];
+                    var data = ajk.analysis.data[p];
+                    if (typeof data === 'undefined') { continue; }
+                    if (data.missingMaxResources)
+                    {
+                        for (var j = 0; j < data.costData.prices.length; ++j)
+                        {
+                            var price = data.costData.prices[j];
+                            var resource = gamePage.resPool.get(price.name);
+                            if (ajk.resources.available(price.name) && resource.maxValue != 0 && resource.maxValue < price.val && !this.rewardMap.hasOwnProperty(price.name))
+                            {
+                                ajk.log.debug('Creating bounty for any storers of ' + price.name + ' for ' + p);
+                                this.rewardMap[price.name] = currentReward;
+                            }
+                        }
+                    }
+                    currentReward *= this.priorityFalloff;
+                }
+
+                ajk.log.unindent();
+            },
+            modifyItem: function(itemKey)
+            {
+                var maxReward = 0;
+                var maxResource = null;
+                for (var rewardResource in this.rewardMap)
+                {
+                    var bounty = this.rewardMap[rewardResource];
+                    if (ajk.cache.isStorerOf(itemKey, rewardResource) && maxReward > bounty)
+                    {
+                        ajk.log.detail(itemKey + ' stores ' + rewardResource + '; potentially claiming bounty of ' + bounty);
+                        maxReward = bounty;
+                        maxResource = rewardResource;
+                    }
+                }
+                if (maxReward != 0)
+                {
+                    ajk.log.debug('Prioritizing ' + itemKey + ' because it stores ' + maxResource);
+                    ajk.analysis.modifyWeight(itemKey, maxReward, 'Storage of ' + maxResource);
+                }
+            }
         }
     },
 
@@ -1454,12 +1533,15 @@ ajk = {
             'deepMining': -10,
             'coalFurnace': -10,
 
+            'printingPress': -10,
+
             // Speculative
             'geodesy': -10,
             'oxidation': -5,
         },
 
         previousPriority: [],
+        previousOrder: [],
 
         weightAdjustments: function()
         {
@@ -1469,6 +1551,7 @@ ajk = {
                 ajk.adjustment.weightedDemandScaling,
                 ajk.adjustment.tabDiscovery,
                 ajk.adjustment.tradingModule,
+                ajk.adjustment.capacityUnblocking,
             ];
         },
 
@@ -1504,7 +1587,8 @@ ajk = {
 
         reset: function()
         {
-            this.previousPriority = this.filteredPriorityList.slice(0);
+            this.previousOrder = this.priorityList;
+            this.previousPriority = this.filteredPriorityList;
 
             this.data = {}
             this.capacityDemand = {};
