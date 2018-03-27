@@ -250,6 +250,7 @@ ajk = {
     {
         internal:
         {
+            dirty: true,
             consumption:
             {
                 postfixes: [
@@ -333,6 +334,8 @@ ajk = {
 
             buildEffectTables: function()
             {
+                if (!this.dirty) { return ;}
+
                 this.consumption.effectMap = {};
                 this.consumption.resourceMap = {};
                 this.consumption.itemMap = {};
@@ -360,6 +363,7 @@ ajk = {
                         if (effects[effectName] == 0)
                         {
                             ajk.log.detail('Ignoring effect ' + effectName + ' with zero-value for ' + bldData.name);
+                            continue;
                         }
                         if (!this.matchEffect(bldData.name, effectName, this.production) &&
                             !this.matchEffect(bldData.name, effectName, this.consumption) &&
@@ -369,6 +373,8 @@ ajk = {
                         }
                     }
                 }
+
+                this.dirty = false;
             },
         },
 
@@ -447,6 +453,11 @@ ajk = {
             return false;
         },
 
+        dirty: function()
+        {
+            this.internal.dirty = true;
+        },
+
         init: function()
         {
             this.internal.buildEffectTables();
@@ -455,12 +466,14 @@ ajk = {
 
     customItems:
     {
+        initialized: false,
+        items: [],
+
         tradeShip: function()
         {
             ajk.ui.switchToTab('Workshop');
 
-            var metadata = jQuery.extend({}, gamePage.workshop.getCraft('ship'));
-            metadata.val = gamePage.resPool.get('ship').value;
+            var craftdata = gamePage.workshop.getCraft('ship');
 
             var itemData = {
                 controller:
@@ -483,19 +496,38 @@ ajk = {
                 },
                 model:
                 {
-                    metadata: metadata
+                    metadata:
+                    {
+                        name: 'tradeShip_custom',
+                        val: 0
+                    }
                 },
-                update: function() {}
+                update: function()
+                {
+                    this.model.metadata.val = gamePage.resPool.get('ship').value;
+                }
             };
             ajk.ui.switchToTab(null);
             return itemData;
         },
 
+        cache: function()
+        {
+            this.items.push(this.tradeShip());
+        },
+
         get: function()
         {
-            return [
-                this.tradeShip()
-            ];
+            if (!this.initialized)
+            {
+                this.cache();
+                this.initialized = true;
+            }
+            for (var i = 0; i < this.items.length; ++i)
+            {
+                this.items[i].update();
+            }
+            return this.items;
         }
     },
 
@@ -1649,12 +1681,16 @@ ajk = {
 
         analyzeItems: function(items)
         {
+            ajk.log.detail('Analyzing ' + items.length + ' items');
+            ajk.log.indent();
             for (var i = 0; i < items.length; ++i)
             {
                 if (!items[i].model.hasOwnProperty('metadata')) { continue; }
 
                 var mData = items[i].model.metadata;
                 var itemKey = mData.name;
+                ajk.log.detail('Analyzing ' + itemKey);
+
                 if (!mData.unlocked) { continue; }
                 if (mData.hasOwnProperty('researched') && mData.researched) { continue; }
 
@@ -1720,6 +1756,7 @@ ajk = {
                     this.data[itemKey].missingMaxResources = true;
                 }
             }
+            ajk.log.unindent();
         },
 
         analyzeResults: function()
@@ -1803,29 +1840,43 @@ ajk = {
 
             analyze: function()
             {
+                var timerData = ajk.timer.start('Analysis');
+
                 ajk.analysis.reset();
+                ajk.timer.interval(timerData, 'Reset');
+
                 ajk.analysis.preanalysis();
+                ajk.timer.interval(timerData, 'Pre-Analysis Pass');
 
                 ajk.analysis.analyzeItems(ajk.customItems.get());
+                ajk.timer.interval(timerData, 'Custom Item Analysis');
 
                 ajk.ui.switchToTab('Bonfire');
                 ajk.analysis.analyzeItems(ajk.core.bonfireTab.buttons);
+                ajk.timer.interval(timerData, 'Bonfire Analysis');
 
-                ajk.ui.switchToTab('Sciene');
                 if (ajk.core.scienceTab.visible)
                 {
+                    ajk.ui.switchToTab('Sciene');
                     ajk.analysis.analyzeItems(ajk.core.scienceTab.buttons);
+                    ajk.timer.interval(timerData, 'Science Analysis');
                 }
 
-                ajk.ui.switchToTab('Workshop');
                 if (ajk.core.workshopTab.visible)
                 {
+                    ajk.ui.switchToTab('Workshop');
                     ajk.analysis.analyzeItems(ajk.core.workshopTab.buttons);
+                    ajk.timer.interval(timerData, 'Workshop Analysis');
                 }
 
                 ajk.analysis.analyzeResults();
+                ajk.timer.interval(timerData, 'Analysis Resolution Pass');
+
                 ajk.analysis.postAnalysisPass();
+                ajk.timer.end(timerData, 'Post-Analysis Pass');
+
                 ajk.ui.switchToTab(null);
+                ajk.timer.end(timerData, 'Cleanup');
             },
 
             operateOnCostData: function(costData)
@@ -1944,6 +1995,7 @@ ajk = {
                                     if (result)
                                     {
                                         ajk.log.info('Purchased ' + priority);
+                                        ajk.cache.dirty();
                                     }
                                     else
                                     {
