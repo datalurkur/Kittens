@@ -842,18 +842,27 @@ ajk = {
             var productionData = jQuery.extend({}, price);
 
             var resource = gamePage.resPool.get(price.name);
+            var deficit = price.val - resource.value;
+            if (deficit <= 0)
+            {
+                ajk.log.trace('Resource is readily available');
+                productionData.method = 'Ready';
+                productionData.time = 0;
+                ajk.log.unindent();
+                return productionData;
+            }
+
             if (resource.unlocked)
             {
-                var minTicks = (price.val - resource.value) / this.getProductionOf(price.name);
+                productionData.method = 'PerTick';
+                var minTicks = deficit / this.getProductionOf(price.name);
                 if (minTicks >= 0)
                 {
                     ajk.log.trace('Default per-tick production will take ' + minTicks + ' ticks');
-                    productionData.method = 'PerTick';
                     productionData.time = minTicks;
                 }
                 else
                 {
-                    productionData.method = 'PerTick';
                     productionData.time = Infinity;
                 }
             }
