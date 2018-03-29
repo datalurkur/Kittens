@@ -702,8 +702,8 @@ ajk.trade = {
             if (race.unlocked || race.name == 'leviathans') { continue; }
             if (race.name == 'lizards' || race.name == 'griffins' || race.name == 'sharks')
             {
-                // TODO - Figure out how to get at metaphysics upgrades and check for diplomacy researched (reduces year to 1)
-                if ((gamePage.resPool.get('karma').value > 0 && gamePage.calendar.year >= 5) ||
+                if ((gamePage.prestige.getPerk('diplomacy').researched && gamePage.calendar.year >= 1) ||
+                    (gamePage.resPool.get('karma').value > 0 && gamePage.calendar.year >= 5) ||
                     (gamePage.calendar.year >= 20))
                 {
                     this.log.detail(race.name + ' are available for discovery');
