@@ -39,10 +39,10 @@ ajk.log = {
         },
     },
 
-    toggleChannel: function(channelName)
+    toggleChannel: function(channelName, isOn)
     {
         var channelMask = this.internal.channels[channelName];
-        if (this.internal.channelMask & channelMask == 0)
+        if (isOn)
         {
             this.internal.channelMask |= channelMask;
         }
@@ -50,6 +50,11 @@ ajk.log = {
         {
             this.internal.channelMask &= (~channelMask);
         }
+    },
+
+    toggleAllChannels: function(areOn)
+    {
+        this.internal.channelMask = (areOn) ? -1 : 0;
     },
 
     channelActive: function(channelName)
@@ -1420,6 +1425,7 @@ ajk.adjustment = {
                     'engineering',
                     'writing',
                     'philosophy',
+                    'theology',
                     'temple'
                 ];
             }
@@ -1535,15 +1541,79 @@ ajk.adjustment = {
     priceRatioModule:
     {
         log: ajk.log.addChannel('adj-price', true),
-        priceModifier: 0.5,
+        params:
+        {
+            min: -1,
+            inflection: [9000, 2],
+            rolloff: [18000, 4],
 
-        // TODO - Modify this to take into account kitten job movement
-        prepare: function() {},
+            slope: 1,
+            solutionExists: false,
+
+            a: 0,
+            b: 0,
+            c: 0,
+        },
+        prepare: function()
+        {
+            this.log.debug('Determining coefficients for cost adjustment functions');
+            this.log.indent();
+            this.log.debug('Using inflection point ' + this.params.inflection.join());
+            this.log.debug('Using rolloff point ' + this.params.rolloff.join());
+            this.log.debug('Minimum value ' + this.params.min);
+
+            this.params.slope = (this.params.inflection[1] - this.params.min) / this.params.inflection[0];
+            this.log.debug('Linear portion slope ' + this.params.slope);
+
+            var t0 = -m*s + n + s*i - j;
+            var t1 = m*n*s - m*s*j - n*s*i - s*i*j;
+
+            if (t0 == 0 || t1 == 0)
+            {
+                this.log.warn('Parameters chosen for nonlinear portion have no solution');
+                return;
+            }
+
+            this.params.solutionExists = true;
+
+            var i = this.params.inflection[0];
+            var j = this.params.inflection[1];
+            var m = this.params.rolloff[0];
+            var n = this.params.rolloff[1];
+            var s = this.params.slope;
+
+            var mMinusI = (m - i);
+            var nMinusJ = (n - j);
+            var aDenom = m*s - n - s*i + j;
+            this.log.detail('Intermediates: ' + [i,j,m,n,s,mMinusI,nMinusJ,aDenom].join());
+
+            this.params.a = -s*mMinusI*mMinusI*nMinusJ*nMinusJ / (aDenom * aDenom);
+            this.params.b = (-m*n + m*s*i + m*j - s*i*i) / (-m*s + n + s*i - j);
+            this.params.c = (-m*n*s + n*s*i + n*j - j*j) / (-m*s + n + s*i - j);
+            this.log.debug('Params chosen: ' + [this.params.a,this.params.b,this.params.c].join());
+
+            this.log.debug('Prices up to inflection point are scaled as ' + this.params.slope + '*x + ' + this.params.min);
+            this.log.debug('Prices past the inflection point are scaled as ' + this.params.a + '*(x + ' + this.params.b + ')^(-1) + ' + this.params.c);
+            this.log.unindent();
+        },
         modifyItem: function(itemKey)
         {
-            var costData = ajk.analysis.data[itemKey].costData;
-            var modifier = Math.log(ajk.analysis.data[itemKey].costData.time + 1) * this.priceModifier;
-            ajk.analysis.modifyWeight(itemKey, modifier, null);
+            var costTime = ajk.analysis.data[itemKey].costData.time;
+            var modifier = 0;
+            if (costTime < this.params.inflection[0] || !this.params.solutionExists)
+            {
+                // Scale linearly
+                this.log.detail('Scaling linearly');
+                modifier = this.params.min + (costTime * this.params.slope);
+            }
+            else
+            {
+                // Scale non-linearly
+                this.log.detail('Scaling non-linearly');
+                modifier = (this.params.a / (this.params.b + costTime)) + this.params.c;
+            }
+            this.log.debug('Adjusting the weight of ' + itemKey + ' by ' + modifier + ' to account for time-cost of ' + costTime);
+            ajk.analysis.modifyWeight(itemKey, modifier, 'time');
 
         },
     },
@@ -1989,16 +2059,17 @@ ajk.core = {
                     if (!ajk.simulate)
                     {
                         explore.controller.buyItem(explore.model, {}, function(result) {
+                            var ajkI = ajk.core.internal;
                             if (result)
                             {
-                                this.log.info('Unlocked new race');
+                                ajkI.log.info('Unlocked new race');
                                 // This is sort of a hack, but fuck if I know why this gets called twice on success with both true and false
-                                this.explorationSuccess = true;
+                                ajkI.explorationSuccess = true;
                             }
-                            else if (!this.explorationSuccess)
+                            else if (!ajkI.explorationSuccess)
                             {
-                                this.log.error('Failed to unlock new race');
-                                this.explorationSuccess = false;
+                                ajkI.log.error('Failed to unlock new race');
+                                ajkI.explorationSuccess = false;
                             }
                         });
                     }
@@ -2031,12 +2102,12 @@ ajk.core = {
                             itemData.item.controller.buyItem(itemData.item.model, {}, function(result) {
                                 if (result)
                                 {
-                                    this.log.info('Purchased ' + priority);
+                                    ajk.core.internal.log.info('Purchased ' + priority);
                                     ajk.cache.dirty();
                                 }
                                 else
                                 {
-                                    this.log.error('Failed to purchase ' + priority);
+                                    ajk.core.internal.log.error('Failed to purchase ' + priority);
                                 }
                             });
                         }
@@ -2120,7 +2191,7 @@ ajk.core = {
         {
             this.internal.log.info('Ticking every ' + this.internal.tickFrequency + ' seconds');
             this.simulateTick();
-            this.internal.tickThread = setInterval(function() { ajk.core.tick(); }, this.internal.tickFrequency * 1000);
+            this.internal.tickThread = setInterval(function() { ajk.core.internal.tick(); }, this.internal.tickFrequency * 1000);
         }
 
         $('#tickToggle')[0].checked = doTick;
@@ -2217,8 +2288,9 @@ ajk.ui = {
             </style>`,
 
         scriptControlContent: `
+            <input type="button" id="simulateButton" value="Simulate One Tick" onclick="ajk.core.simulateTick();" style="width:200px"/><br/>
             <input id="simulateToggle" type="checkbox" onclick="ajk.simulate = $('#simulateToggle')[0].checked;">
-            <label for="simulateToggle">Simulate</label>
+            <label for="simulateToggle">Simulating</label>
             <br/>
             <input id="tickToggle" type="checkbox" onclick="ajk.core.shouldTick($('#tickToggle')[0].checked);">
             <label for="tickToggle">Ticking</label>
@@ -2350,6 +2422,16 @@ ajk.ui = {
             return string;
         },
 
+        refreshLogChannelToggles: function()
+        {
+            for (var channel in ajk.log.internal.channels)
+            {
+                var enabled = ajk.log.channelActive(channel);
+                var toggleName = 'logChannel' + channel + 'Toggle';
+                $('#' + toggleName)[0].checked = ajk.log.channelActive(channel);
+            }
+        },
+
         refreshPriorityTable: function()
         {
             var container = $('#priorityTable');
@@ -2459,15 +2541,18 @@ ajk.ui = {
         var logChannelContainer = $('#logChannelContainer');
         var logChannelTitle = '<span>Log Channels</span>';
         var logChannelContent = '';
+        logChannelContent += '<input type="button" id="enableAllChannelsButton"  value="Enable"  onclick="ajk.log.toggleAllChannels(true); ajk.ui.internal.refreshLogChannelToggles();"  style="width:100px">';
+        logChannelContent += '<input type="button" id="disableAllChannelsButton" value="Disable" onclick="ajk.log.toggleAllChannels(false); ajk.ui.internal.refreshLogChannelToggles();" style="width:100px">';
+        logChannelContent += '<br/>';
         for (var channel in ajk.log.internal.channels)
         {
             var toggleName = 'logChannel' + channel + 'Toggle';
             logChannelContent += '<span style="display:inline-block; width: 15px"/>'
-            logChannelContent += '<input id="' + toggleName + '" type="checkbox" onclick="ajk.log.toggleChannel($(\'#' + toggleName + '\')[0].checked);">';
+            logChannelContent += '<input id="' + toggleName + '" type="checkbox" onclick="ajk.log.toggleChannel(\'' + channel + '\', $(\'#' + toggleName + '\')[0].checked);">';
             logChannelContent += '<label for="' + toggleName + '">' + channel + '</label>';
             logChannelContent += '<br/>'
         }
-        this.internal.createCollapsiblePanel(logChannelContainer, 'logChannels', logChannelTitle, logChannelContent, true, false);
+        this.internal.createCollapsiblePanel(logChannelContainer, 'logChannels', logChannelTitle, logChannelContent, true, true);
         this.internal.createCollapsiblePanel(menu, 'ajkBackup', 'Google Drive Backup', this.internal.backupContent, false, true);
         this.internal.createCollapsiblePanel(menu, 'ajkPriority', 'Priority Result', '<table id="priorityTable" class="ajkTable"/>', false, false);
         this.internal.createCollapsiblePanel(menu, 'ajkResources', 'Resource Demand', '<table id="resourceDemandTable" class="ajkTable"/>', false, true);
@@ -2478,12 +2563,7 @@ ajk.ui = {
         $("#detailErrorToggle")[0].checked = ajk.log.detailedLogsOnError;
         $("#logLevelSelect")[0].value = ajk.log.logLevel;
 
-        for (var channel in ajk.log.internal.channels)
-        {
-            var enabled = ajk.log.channelActive(channel);
-            var toggleName = 'logChannel' + channel + 'Toggle';
-            $('#' + toggleName)[0].checked = ajk.log.channelActive(channel);
-        }
+        this.internal.refreshLogChannelToggles();
     },
 
     switchToTab: function(tabName)
