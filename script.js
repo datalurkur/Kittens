@@ -262,33 +262,35 @@ ajk.timer = {
     start: function(title)
     {
         return {
+            log: this.log,
+
             title: title,
             timestamps: [
                 ['Start', performance.now()]
             ],
-            longestLabel: 0
+            longestLabel: 0,
+
+            interval: function(label)
+            {
+                this.timestamps.push([label, performance.now()]);
+                this.longestLabel = Math.max(this.longestLabel, label.length);
+            },
+
+            end: function(label)
+            {
+                this.interval(label);
+
+                this.log.debug(this.title);
+                this.log.indent();
+                for (var i = 1; i < this.timestamps.length; ++i)
+                {
+                    var delta = this.timestamps[i][1] - this.timestamps[i - 1][1];
+                    this.log.debug(this.timestamps[i][0].padEnd(this.longestLabel) + delta.toFixed(1).padStart(8) + ' ms');
+                }
+                this.log.unindent();
+            }
         };
     },
-
-    interval: function(data, label)
-    {
-        data.timestamps.push([label, performance.now()]);
-        data.longestLabel = Math.max(data.longestLabel, label.length);
-    },
-
-    end: function(data, label)
-    {
-        this.interval(data, label);
-
-        this.log.debug(data.title);
-        this.log.indent();
-        for (var i = 1; i < data.timestamps.length; ++i)
-        {
-            var delta = data.timestamps[i][1] - data.timestamps[i - 1][1];
-            this.log.debug(data.timestamps[i][0].padEnd(data.longestLabel) + delta.toFixed(1).padStart(8) + ' ms');
-        }
-        this.log.unindent();
-    }
 };
 
 ajk.cache = {
@@ -555,6 +557,8 @@ ajk.customItems = {
         return itemData;
     },
 
+    // TODO - Add barge
+
     cache: function()
     {
         this.items.push(this.tradeShip());
@@ -598,6 +602,7 @@ ajk.trade = {
 
     getTradeAmountFor: function(raceName, resourceName)
     {
+        // TODO - Check the accuracy of this
         if (raceName == 'zebras' && resourceName == 'titanium')
         {
             // Special rules for this
@@ -607,16 +612,7 @@ ajk.trade = {
             return chance * amount;
         }
 
-        var race;
-        for (var i = 0; i < gamePage.diplomacy.races.length; ++i)
-        {
-            if (gamePage.diplomacy.races[i].name == raceName)
-            {
-                race = gamePage.diplomacy.races[i];
-                break;
-            }
-        }
-
+        var race = gamePage.diplomacy.get(raceName);
         var saleData;
         for (var i = 0; i < race.sells.length; ++i)
         {
@@ -634,59 +630,27 @@ ajk.trade = {
         else if (season == 3) { seasonModifier = saleData.seasons.autumn; }
         else                  { seasonModifier = saleData.seasons.winter; }
 
-        return (1 + gamePage.diplomacy.getTradeRatio()) * (saleData.chance / 100) * seasonModifier;
+        return saleData.value * (1 + gamePage.diplomacy.getTradeRatio()) * (saleData.chance / 100) * seasonModifier;
     },
 
-    getTradeDataFor(price)
+    getTradeDataFor(resource)
     {
-        var chosenRace = null;
-        var raceAmount = null;
+        var data = [];
         for (var i = 0; i < gamePage.diplomacy.races.length; ++i)
         {
             var race = gamePage.diplomacy.races[i];
             if (!race.unlocked) { continue; }
             for (var j = 0; j < race.sells.length; ++j)
             {
-                if (race.sells[j].name == price.name)
+                if (race.sells[j].name == resource)
                 {
-                    var tradeAmount = this.getTradeAmountFor(race.name, price.name);
-                    if (chosenRace == null || tradeAmount > raceAmount)
-                    {
-                        chosenRace = race;
-                        raceAmount = tradeAmount;
-                    }
+                    var tradeAmount = this.getTradeAmountFor(race.name, resource);
+                    this.log.trace('Expect ' + tradeAmount + ' ' + resource + ' per trade with ' + race.name);
+                    data.push([race, tradeAmount]);
                 }
             }
         }
-        if (chosenRace == null) { return null; }
-
-        var numTradesRequired = Math.ceil(price.val / raceAmount);
-        var prices = [];
-        for (var i = 0; i < chosenRace.buys.length; ++i)
-        {
-            prices.push({
-                name: chosenRace.buys[i].name,
-                val: chosenRace.buys[i].val * numTradesRequired
-            });
-        }
-        var requiredManpower = numTradesRequired * 50;
-        var requiredGold = numTradesRequired * 15;
-        prices.push({
-            name: 'manpower',
-            val: requiredManpower,
-        });
-        prices.push({
-            name: 'gold',
-            val: requiredGold,
-        });
-
-        this.log.detail(price.name + ' can be acquired from ' + chosenRace.name + ' in ' + numTradesRequired + ' trades, at a cost of ' + requiredManpower + ' catpower and ' + requiredGold + ' gold');
-
-        return {
-            prices: prices,
-            race: chosenRace,
-            trades: numTradesRequired
-        };
+        return data;
     },
 
     explorationRequirement: function()
@@ -726,7 +690,8 @@ ajk.trade = {
                 else if (culture.value < 1500)
                 {
                     this.log.detail('Waiting on culture to discover nagas');
-                    ajk.resources.accumulateSimpleDemand('culture', 1500, this.explorationDemandWeight);
+                    // TODO - Fix this
+                    //ajk.resources.accumulateSimpleDemand('culture', 1500, this.explorationDemandWeight);
                     return ajk.cache.getProducersOfResource('culture');
                 }
                 else
@@ -845,6 +810,347 @@ ajk.workshop = {
     }
 };
 
+ajk.costData = {
+    // Cost data is a layered process
+    // 1) Determine the various pathways for acquiring resources
+    // 2) Determine the time cost of acquiring resources, building a table of resources used along the way (unique to a given item - does not reflect global resource usage)
+    // 3) Collect a flat list of missing resources, accumulating the amount needed for each one
+    // 4) Determine the total cost in time
+
+    buildResourceCache: function()
+    {
+        var cache = {
+            available: {},
+            lacking:   {},
+            waitTime:  {},
+            buffer:    {},
+            reset: function()
+            {
+                for (var resource in this.waitTime)
+                {
+                    this.waitTime[resource] = 0;
+                    this.lacking[resource] = 0;
+                }
+            }
+        };
+        for (var i = 0; i < gamePage.resPool.resources.length; ++i)
+        {
+            var res = gamePage.resPool.resources[i];
+            var buffer = ajk.resources.getBuffer(res.name);
+            var bufferNeeded = buffer - res.value;
+            var available = res.value;
+            if (bufferNeeded < 0 && buffer > 0)
+            {
+                this.internal.log.detail('Reserving a buffer of ' + buffer + ' ' + res.name);
+                bufferNeeded = 0;
+                available -= buffer;
+            }
+            else if (buffer > 0)
+            {
+                this.internal.log.detail('Current quantity of ' + res.name + ' does not satisfy buffer requirements');
+            }
+            cache.buffer[res.name]    = bufferNeeded;
+            cache.available[res.name] = Math.max(0, res.value - buffer);
+            cache.lacking[res.name]   = 0;
+            cache.waitTime[res.name]  = 0;
+        }
+        return cache;
+    },
+
+    internal:
+    {
+        log: ajk.log.addChannel('costdata', true),
+
+        buildSparseData: function(resource, value)
+        {
+            this.log.detail('Building sparse data for ' + value + ' ' + resource);
+            this.log.indent();
+
+            var rData = gamePage.resPool.get(resource);
+            var data = {
+                log: this.log,
+
+                // Basic Info
+                resourceName: resource,
+                price:        value,
+                multiplier:   1,
+                time:         Infinity,
+                options:      [],
+                consumed:     0,
+                deficit:      0,
+                decision:     null,
+
+                fullPrice: function()
+                {
+                    return this.price * this.multiplier;
+                },
+
+                consume: function(cache, recursive)
+                {
+                    this.log.detail('Consuming resources for ' + this.resourceName);
+                    this.log.indent();
+                    var net = cache.available[this.resourceName] - this.fullPrice();
+                    if (net < 0)
+                    {
+                        this.deficit = -net;
+                        this.consumed = cache.available[this.resourceName];
+                        cache.available[this.resourceName] = 0;
+                        this.log.trace('Consumed all available ' + this.resourceName + ' (' + this.consumed.toFixed(2) + ') - ' + this.deficit.toFixed(2) + ' remains');
+                    }
+                    else
+                    {
+                        this.deficit = 0;
+                        this.consumed = this.fullPrice();
+                        cache.available[this.resourceName] -= this.consumed;
+                        this.log.trace('Consumed ' + this.consumed.toFixed(2) + ' ' + this.resourceName);
+                    }
+
+                    if (recursive && this.decision != null)
+                    {
+                        this.log.trace('Consuming dependent resources');
+                        this.decision.consume(cache, recursive);
+                    }
+                    this.log.unindent();
+                },
+
+                refund: function(cache, recursive)
+                {
+                    this.log.detail('Refunding resources for ' + this.resourceName);
+                    this.log.indent();
+                    if (recursive && this.decision != null)
+                    {
+                        this.log.trace('Refunding dependent resources for ' + this.resourceName);
+                        this.decision.refund(cache, recursive);
+                    }
+
+                    this.log.trace('Refunded ' + this.consumed + ' ' + this.resourceName);
+                    cache.available[this.resourceName] += this.consumed;
+                    this.consumed = 0;
+                    this.deficit  = 0;
+                    this.log.unindent();
+                },
+            };
+
+            if (rData.craftable)
+            {
+                this.log.detail('Data includes crafting option');
+                var cData = gamePage.workshop.getCraft(resource);
+                data.options.push(this.buildSparseDependencies('craft', gamePage.workshop.getCraft(resource).prices, [], 1 + gamePage.getCraftRatio(), null));
+            }
+
+            // Don't trade for catnip
+            if (resource != 'catnip')
+            {
+                var tradeData = ajk.trade.getTradeDataFor(resource);
+                for (var i = 0; i < tradeData.length; ++i)
+                {
+                    this.log.detail('Adding trade option with ' + tradeData[i][0].name);
+                    data.options.push(this.buildSparseDependencies('trade', tradeData[i][0].buys, [['gold', 15], ['manpower', 50]], tradeData[i][1], tradeData[i][0]));
+                }
+            }
+
+            this.log.unindent();
+            return data;
+        },
+
+        buildSparseDependencies: function(method, basePrices, extraPrices, expectedMultiplier, extraData)
+        {
+            var priceData = [];
+            for (var i = 0; i < basePrices.length; ++i)
+            {
+                priceData.push(this.buildSparseData(basePrices[i].name, basePrices[i].val));
+            }
+            for (var i = 0; i < extraPrices.length; ++i)
+            {
+                priceData.push(this.buildSparseData(extraPrices[i][0], extraPrices[i][1]));
+            }
+            return {
+                method:             method,
+                dependencies:       priceData,
+                expectedMultiplier: expectedMultiplier,
+                numRequired:        0,
+                extraData:          extraData,
+                consume: function(cache, recursive)
+                {
+                    for (var i = 0; i < this.dependencies.length; ++i)
+                    {
+                        this.dependencies[i].consume(cache, recursive);
+                    }
+                },
+                refund: function(cache, recursive)
+                {
+                    for (var i = 0; i < this.dependencies.length; ++i)
+                    {
+                        this.dependencies[i].refund(cache, recursive);
+                    }
+                },
+            };
+        },
+
+        populateTimeData: function(data, resourceCache)
+        {
+            this.log.detail('Populating time data for ' + data.fullPrice().toFixed(2) + ' ' + data.resourceName);
+            this.log.indent();
+
+            // Default decision is to wait and do nothing
+            data.decision = null;
+            data.consume(resourceCache, false);
+
+            // If the resource needs are already met, no decision be made here
+            if (data.deficit == 0)
+            {
+                this.log.detail('Enough resources exist to satisfy the requirement');
+                data.time = 0;
+                return;
+            }
+            else
+            {
+                this.log.detail('Additional ' + data.deficit + ' required');
+            }
+
+            // Determine the time for this resource to become available with no action taken
+            var baseTime = data.deficit / ajk.resources.getProductionOf(data.resourceName);
+            if (baseTime < 0) { baseTime = Infinity; }
+            data.time = baseTime;
+            this.log.detail('Base wait time is ' + baseTime);
+
+            // Examine each option to see if it takes less time than just waiting
+            for (var i = 0; i < data.options.length; ++i)
+            {
+                var opt = data.options[i];
+                this.populateTimeDependencyData(data.deficit, opt, resourceCache);
+                if (opt.time < data.time)
+                {
+                    this.log.detail('Selected option as the new least expensive');
+                    data.time = opt.time;
+                    data.decision = opt;
+                }
+            }
+
+            if (data.decision != null)
+            {
+                data.decision.consume(resourceCache, true);
+            }
+            else if (data.options.length > 0)
+            {
+                this.log.detail('No option was selected');
+            }
+
+            this.log.unindent();
+        },
+
+        populateTimeDependencyData(deficit, option, resourceCache)
+        {
+            var maxTime = 0;
+            option.numRequired = Math.ceil(deficit / option.expectedMultiplier);
+            this.log.detail('Considering option of ' + option.method + ' with ' + option.numRequired + ' actions required');
+            this.log.indent();
+
+            for (var j = 0; j < option.dependencies.length; ++j)
+            {
+                var dep = option.dependencies[j];
+                dep.multiplier = option.numRequired;
+                this.populateTimeData(dep, resourceCache)
+                maxTime = Math.max(maxTime, dep.time);
+            }
+
+            option.refund(resourceCache, true);
+            option.time = maxTime;
+            this.log.unindent();
+        },
+
+        populateFlatList: function(data, resourceCache)
+        {
+            for (var i = 0; i < data.dependencies.length; ++i)
+            {
+                var dep = data.dependencies[i];
+                this.log.detail('Checking dependency ' + dep.resourceName + ' for resource requirements');
+                this.log.indent();
+                if (dep.decision != null)
+                {
+                    this.populateFlatList(dep.decision, resourceCache);
+                }
+                else if (dep.deficit > 0)
+                {
+                    this.log.detail('Adding ' + dep.deficit + ' ' + dep.resourceName + ' to the list of in-demand resources');
+                    resourceCache.lacking[dep.resourceName] += dep.deficit;
+                }
+                this.log.unindent();
+            }
+        },
+
+        computeResults: function(data, resourceCache)
+        {
+            var maxTime = 0;
+            var bottlenecks = [];
+            for (var resource in resourceCache.lacking)
+            {
+                var lacking = resourceCache.lacking[resource];
+                if (lacking > 0)
+                {
+                    if (resourceCache.buffer[resource] > 0)
+                    {
+                        this.log.detail('Adding ' + resourceCache.buffer[resource] + ' to cost to account for missing ' + resource + ' buffer');
+                        lacking += resourceCache.buffer[resource];
+                    }
+                    var resProduction = ajk.resources.getProductionOf(resource);
+                    var thisTime = lacking / resProduction;
+                    resourceCache.waitTime[resource] = thisTime;
+
+                    var emplaced = false;
+                    for (var i = 0; i < bottlenecks.length; ++i)
+                    {
+                        if (thisTime > bottlenecks[i][1])
+                        {
+                            bottlenecks.splice(i, 0, [resource, thisTime]);
+                            emplaced = true;
+                            break;
+                        }
+                    }
+                    if (!emplaced)
+                    {
+                        bottlenecks.push([resource, thisTime]);
+                    }
+
+                    this.log.detail('It will take ' + thisTime.toFixed(2) + ' ticks to produce ' + lacking.toFixed(2) + ' ' + resource + ' at a rate of ' + resProduction.toFixed(2) + ' per tick');
+                    maxTime = Math.max(maxTime, thisTime);
+                }
+            }
+
+            data.flatTime    = maxTime;
+            data.bottlenecks = bottlenecks;
+
+            resourceCache.reset();
+        },
+    },
+
+    isSlowedBy: function(data, resource, amount)
+    {
+
+    },
+
+    build: function(item, resourceCache)
+    {
+        var timerData = ajk.timer.start('Cost Data Contruction');
+
+        var data = this.internal.buildSparseDependencies('construct', item.model.prices, [], 1, item);
+        timerData.interval('Build Sparse Dependencies');
+
+        this.internal.populateTimeDependencyData(1, data, resourceCache);
+        timerData.interval('Populate Time Data');
+
+        data.consume(resourceCache, true);
+        timerData.interval('Mark Resources');
+
+        this.internal.populateFlatList(data, resourceCache);
+        timerData.interval('Populate Flat List');
+
+        this.internal.computeResults(data, resourceCache);
+        timerData.end('Compute Results');
+        return data;
+    },
+};
+
 ajk.resources = {
     log: ajk.log.addChannel('resources', true),
     catnipBufferFixed: 5000,
@@ -883,9 +1189,6 @@ ajk.resources = {
         expectedPerTick: {},
     },
 
-    demand: {},
-    previousDemand: {},
-
     productionOutput:
     {
         'energy': function() { return gamePage.resPool.getEnergyDelta(); }
@@ -893,6 +1196,7 @@ ajk.resources = {
 
     available: function(resourceName)
     {
+        // TODO - Cache this
         var baseResource = gamePage.resPool.get(resourceName);
         if (baseResource.unlocked) { return true; }
         if (baseResource.craftable)
@@ -909,152 +1213,6 @@ ajk.resources = {
             return true;
         }
         return false;
-    },
-
-    analyzeResourceProduction: function(price)
-    {
-        this.log.indent();
-        this.log.trace('Determining time cost of producing ' + price.val + ' ' + price.name);
-        var productionData = jQuery.extend({}, price);
-
-        var resource = gamePage.resPool.get(price.name);
-        var deficit = price.val - resource.value;
-        if (deficit <= 0)
-        {
-            this.log.trace('Resource is readily available');
-            productionData.method = 'Ready';
-            productionData.time = 0;
-            this.log.unindent();
-            return productionData;
-        }
-
-        if (resource.unlocked)
-        {
-            productionData.method = 'PerTick';
-            var minTicks = deficit / this.getProductionOf(price.name);
-            if (minTicks >= 0)
-            {
-                this.log.trace('Default per-tick production will take ' + minTicks + ' ticks');
-                productionData.time = minTicks;
-            }
-            else
-            {
-                productionData.time = Infinity;
-            }
-        }
-        else
-        {
-            this.log.trace(price.name + ' is locked, perhaps we can craft it');
-            productionData.method = 'Locked';
-            productionData.time = Infinity;
-        }
-
-        if (resource.craftable && resource.name != 'wood')
-        {
-            var numCraftsRequired = Math.ceil(price.val / (1 + gamePage.getResCraftRatio(price.name)));
-            this.log.trace('Craftable in ' + numCraftsRequired + ' crafts');
-
-            var craftPrices = gamePage.workshop.getCraft(price.name).prices;
-            var modifiedCraftPrices = [];
-            for (var i = 0; i < craftPrices.length; ++i)
-            {
-                modifiedCraftPrices.push({
-                    name: craftPrices[i].name,
-                    val: craftPrices[i].val * numCraftsRequired
-                });
-            }
-
-            var costData = this.analyzeCostProduction(modifiedCraftPrices);
-            if (costData.time < productionData.time)
-            {
-                this.log.trace('Crafting is more effective');
-                productionData.time = costData.time;
-                productionData.method = 'Craft';
-                productionData.craftAmount = numCraftsRequired;
-                productionData.dependencies = costData;
-            }
-        }
-
-        if (resource.name != 'catnip')
-        {
-            var tradeData = ajk.trade.getTradeDataFor(price);
-            if (tradeData != null)
-            {
-                this.log.trace('Tradeable');
-                var costData = this.analyzeCostProduction(tradeData.prices);
-                if (costData.time < productionData.time)
-                {
-                    this.log.trace('Trading is more effective');
-                    productionData.time = costData.time;
-                    productionData.method = 'Trade';
-                    productionData.tradeRace = tradeData.race;
-                    productionData.trades = tradeData.trades;
-                    productionData.dependencies = costData;
-                }
-            }
-        }
-        this.log.unindent();
-        return productionData;
-    },
-
-    analyzeCostProduction: function(prices)
-    {
-        var costData = {
-            time: 0,
-            prices: []
-        };
-        for (var i = 0; i < prices.length; ++i)
-        {
-            var productionData = this.analyzeResourceProduction(prices[i]);
-            if (productionData.time > costData.time)
-            {
-                costData.time = productionData.time;
-            }
-            costData.prices.push(productionData);
-        }
-        return costData;
-    },
-
-    getFlatCostList: function(costData)
-    {
-        var prices = [];
-        for (var i = 0; i < costData.prices.length; ++i)
-        {
-            if (costData.prices[i].hasOwnProperty('dependencies'))
-            {
-                prices = prices.concat(this.getFlatCostList(costData.prices[i].dependencies));
-            }
-            else
-            {
-                prices.push(costData.prices[i]);
-            }
-        }
-        return prices;
-    },
-
-    getBottlenecksFor: function(costData)
-    {
-        var bottlenecks = [];
-        var flatList = this.getFlatCostList(costData);
-        for (var i = 0; i < flatList.length; ++i)
-        {
-            if (flatList[i].time == 0) { continue; }
-            var emplaced = false;
-            for (var j = 0; j < bottlenecks.length; ++j)
-            {
-                if (flatList[i].time > bottlenecks[j].time)
-                {
-                    bottlenecks.splice(j, 0, flatList[i]);
-                    emplaced = true;
-                    break;
-                }
-            }
-            if (!emplaced)
-            {
-                bottlenecks.push(flatList[i]);
-            }
-        }
-        return bottlenecks;
     },
 
     getProductionOf: function(resource)
@@ -1100,86 +1258,17 @@ ajk.resources = {
         }
     },
 
-    accumulateSimpleDemand: function(resource, amount, weight)
+    getBuffer: function(resource)
     {
-        if (!this.demand.hasOwnProperty(resource))
+        if (resource == 'catnip')
         {
-            this.demand[resource] = {
-                amount: 0,
-                weights: [],
-            };
+            var scaledBuffer = gamePage.resPool.get('catnip').maxValue * this.catnipBufferRatio;
+            return Math.max(scaledBuffer, this.catnipBufferFixed);
         }
-        this.demand[resource].amount += amount;
-        this.demand[resource].weights.push([amount, weight]);
-    },
-
-    accumulateDemand: function(costData, weight)
-    {
-        for (var i = 0; i < costData.prices.length; ++i)
+        else
         {
-            if (costData.prices[i].hasOwnProperty('dependencies'))
-            {
-                this.accumulateDemand(costData.prices[i].dependencies, weight);
-            }
-            this.accumulateSimpleDemand(costData.prices[i].name, costData.prices[i].val, weight);
+            return 0;
         }
-    },
-
-    complexityOfPreviousDemand: function()
-    {
-        return Object.keys(this.previousDemand).length;
-    },
-
-    previouslyInDemand: function(resourceName)
-    {
-        return this.previousDemand.hasOwnProperty(resourceName);
-    },
-
-    inDemand: function(resourceName)
-    {
-        return this.demand.hasOwnProperty(resourceName);
-    },
-
-    hasCompetition: function(costData)
-    {
-        for (var i = 0; i < costData.prices.length; ++i)
-        {
-            if (this.inDemand(costData.prices[i].name)) { return true; }
-            if (costData.prices[i].hasOwnProperty('dependencies'))
-            {
-                if (this.hasCompetition(costData.prices[i].dependencies)) { return true; }
-            }
-        }
-        return false;
-    },
-
-    catnipBuffer: function()
-    {
-        var scaledBuffer = gamePage.resPool.get('catnip').maxValue * this.catnipBufferRatio;
-        return Math.max(scaledBuffer, this.catnipBufferFixed);
-    },
-
-    getWeightedDemand: function(demand)
-    {
-        var weightedDemand = {};
-        for (var resource in demand)
-        {
-            // The adjustment should take into account both the size of the demand as well as the weights of each component
-            weightedDemand[resource] = 0;
-            var weights = demand[resource].weights;
-            this.log.trace('There are ' + weights.length + ' contributors to the demand for ' + resource);
-            for (var i = 0; i < weights.length; ++i)
-            {
-                var rawAmount = weights[i][0];
-                var rawWeight = weights[i][1];
-                var scaledAmount = Math.log(rawAmount + 1);
-                var scaledWeight = Math.max(-1, Math.min(0, (rawWeight - 10) / 20));
-                var contribution = scaledAmount * scaledWeight;
-                this.log.trace('Scaled raw amount and weight ' + rawAmount.toFixed(2) + ',' + rawWeight.toFixed(2) + ' to ' + contribution.toFixed(2) + ' (' + scaledAmount.toFixed(2) + ' * ' + scaledWeight.toFixed(2) + ')');
-                weightedDemand[resource] += contribution;
-            }
-        }
-        return weightedDemand;
     },
 
     convert: function()
@@ -1204,6 +1293,8 @@ ajk.resources = {
         }
 
         var catPower = gamePage.resPool.get('manpower');
+        // TODO - Fix this
+        /*
         if (catPower.unlocked && catPower.value / catPower.maxValue >= this.conversionMaxRatio && !this.inDemand('manpower'))
         {
             var numHunts = Math.ceil(catPower.maxValue * this.catpowerConversionRatio / 100);
@@ -1236,6 +1327,7 @@ ajk.resources = {
         {
             ajk.workshop.craft('compedium');
         }
+        */
     }
 };
 
@@ -1277,6 +1369,8 @@ ajk.jobs = {
             return;
         }
 
+        /*
+        // TODO - Fix this
         var bottlenecks = ajk.resources.getBottlenecksFor(ajk.analysis.data[highestPri].costData);
         if (bottlenecks.length == 0)
         {
@@ -1293,6 +1387,7 @@ ajk.jobs = {
         if (this.assign('priest')) { return; }
 
         this.log.debug('Bottleneck ' + bottleneck + ' demands no job that is mapped');
+        */
     }
 };
 
@@ -1326,8 +1421,11 @@ ajk.adjustment = {
                 if (ajk.analysis.data.hasOwnProperty(ajk.analysis.previousPriority[0]))
                 {
                     this.topPriority = ajk.analysis.previousPriority[0];
+                    /*
+                    // TOOD - Fix this
                     this.bottlenecks = ajk.resources.getBottlenecksFor(ajk.analysis.data[this.topPriority].costData);
                     this.log.debug('Production of ' + this.topPriority + ' is bottlenecked on ' + this.bottlenecks.length + ' resources');
+                    */
                 }
                 else
                 {
@@ -1368,7 +1466,8 @@ ajk.adjustment = {
         prepare: function()
         {
             this.log.debug('Prioritizing items based on weight-adjusted demand');
-            this.weightedDemand = ajk.resources.getWeightedDemand(ajk.resources.previousDemand);
+            // TODO - Fix this
+            //this.weightedDemand = ajk.resources.getWeightedDemand(ajk.resources.previousDemand);
         },
         modifyItem: function(itemKey)
         {
@@ -1471,6 +1570,7 @@ ajk.adjustment = {
         tradeBottleneckRatio: 0,
         tradeProductionBonus: 0,
 
+        // TODO - Fix this
         hasTradeBottleneck: function(costData)
         {
             var mostExpensive = 0;
@@ -1510,6 +1610,7 @@ ajk.adjustment = {
                 {
                     continue;
                 }
+                // TODO - Fix this
                 if (this.hasTradeBottleneck(ajk.analysis.data[pp[i]].costData))
                 {
                     numTradeBottlenecks += 1;
@@ -1521,6 +1622,7 @@ ajk.adjustment = {
         },
         modifyItem: function(itemKey)
         {
+            // TODO - Fix this
             var costData = ajk.analysis.data[itemKey].costData;
 
             // Apply an across-the board penalty for any item that it primarily bottlenecked by a resource that is being traded for
@@ -1596,22 +1698,25 @@ ajk.adjustment = {
             this.log.debug('Prices past the inflection point are scaled as ' + this.params.a + '*(x + ' + this.params.b + ')^(-1) + ' + this.params.c);
             this.log.unindent();
         },
-        modifyItem: function(itemKey)
+        evaluate: function(costTime)
         {
-            var costTime = ajk.analysis.data[itemKey].costData.time;
-            var modifier = 0;
             if (costTime < this.params.inflection[0] || !this.params.solutionExists)
             {
                 // Scale linearly
                 this.log.detail('Scaling linearly');
-                modifier = this.params.min + (costTime * this.params.slope);
+                return this.params.min + (costTime * this.params.slope);
             }
             else
             {
                 // Scale non-linearly
                 this.log.detail('Scaling non-linearly');
-                modifier = (this.params.a / (this.params.b + costTime)) + this.params.c;
+                return (this.params.a / (this.params.b + costTime)) + this.params.c;
             }
+        },
+        modifyItem: function(itemKey)
+        {
+            var costTime = ajk.analysis.data[itemKey].costData.time;
+            var modifier = this.evaluate(costTime);
             this.log.debug('Adjusting the weight of ' + itemKey + ' by ' + modifier + ' to account for time-cost of ' + costTime);
             ajk.analysis.modifyWeight(itemKey, modifier, 'time');
 
@@ -1712,12 +1817,15 @@ ajk.analysis = {
     weightAdjustments: function()
     {
         return [
+        // TODO - Fix this
+        /*
             ajk.adjustment.priceRatioModule,
             ajk.adjustment.reinforceTopPriority,
             ajk.adjustment.weightedDemandScaling,
             ajk.adjustment.tabDiscovery,
             ajk.adjustment.tradingModule,
             ajk.adjustment.capacityUnblocking,
+            */
         ];
     },
 
@@ -1798,9 +1906,12 @@ ajk.analysis = {
             if (mData.hasOwnProperty('researched') && mData.researched) { continue; }
 
             var itemPrices = items[i].controller.getPrices(items[i].model);
+            /*
+            // TODO - Fix this
             this.log.trace('Determining how to best produce ' + itemKey + ' and how long it will take');
             var costData = ajk.resources.analyzeCostProduction(itemPrices);
             this.log.detail('It will be ' + costData.time + ' ticks until there are enough resources for ' + itemKey);
+            */
 
             if (!this.data.hasOwnProperty(itemKey))
             {
@@ -1808,7 +1919,8 @@ ajk.analysis = {
             }
             this.data[itemKey].item = items[i];
             this.data[itemKey].missingMaxResources = false;
-            this.data[itemKey].costData = costData;
+            // TODO - Fix this
+            //this.data[itemKey].costData = costData;
 
             if (mData.hasOwnProperty('effects'))
             {
@@ -1898,7 +2010,8 @@ ajk.analysis = {
         if (this.shouldExplore)
         {
             this.log.detail('Accounting for catpower demand for exploration');
-            ajk.resources.accumulateSimpleDemand('manpower', 1000, ajk.trade.explorationDemandWeight);
+            // TODO - Fix this
+            //ajk.resources.accumulateSimpleDemand('manpower', 1000, ajk.trade.explorationDemandWeight);
         }
     },
 
@@ -1914,6 +2027,8 @@ ajk.analysis = {
                 continue;
             }
 
+            /*
+            // TODO - Fix this
             if (!ajk.resources.hasCompetition(itemData.costData))
             {
                 this.log.trace('Added ' + this.priorityList[i] + ' to list of filtered items');
@@ -1924,6 +2039,7 @@ ajk.analysis = {
             {
                 this.log.trace('Filtered out ' + this.priorityList[i] + ' due to resource competition');
             }
+            */
         }
     },
 };
@@ -1950,42 +2066,44 @@ ajk.core = {
             var timerData = ajk.timer.start('Analysis');
 
             ajk.analysis.reset();
-            ajk.timer.interval(timerData, 'Reset');
+            timerData.interval('Reset');
 
             ajk.analysis.preanalysis();
-            ajk.timer.interval(timerData, 'Pre-Analysis Pass');
+            timerData.interval('Pre-Analysis Pass');
 
             ajk.analysis.analyzeItems(ajk.customItems.get());
-            ajk.timer.interval(timerData, 'Custom Item Analysis');
+            timerData.interval('Custom Item Analysis');
 
             ajk.ui.switchToTab('Bonfire');
             ajk.analysis.analyzeItems(ajk.core.bonfireTab.buttons);
-            ajk.timer.interval(timerData, 'Bonfire Analysis');
+            timerData.interval('Bonfire Analysis');
 
             if (ajk.core.scienceTab.visible)
             {
                 ajk.ui.switchToTab('Sciene');
                 ajk.analysis.analyzeItems(ajk.core.scienceTab.buttons);
-                ajk.timer.interval(timerData, 'Science Analysis');
+                timerData.interval('Science Analysis');
             }
 
             if (ajk.core.workshopTab.visible)
             {
                 ajk.ui.switchToTab('Workshop');
                 ajk.analysis.analyzeItems(ajk.core.workshopTab.buttons);
-                ajk.timer.interval(timerData, 'Workshop Analysis');
+                timerData.interval('Workshop Analysis');
             }
 
             ajk.analysis.analyzeResults();
-            ajk.timer.interval(timerData, 'Analysis Resolution Pass');
+            timerData.interval('Analysis Resolution Pass');
 
             ajk.analysis.postAnalysisPass();
-            ajk.timer.end(timerData, 'Post-Analysis Pass');
+            timerData.end('Post-Analysis Pass');
 
             ajk.ui.switchToTab(null);
-            ajk.timer.end(timerData, 'Cleanup');
+            timerData.end('Cleanup');
         },
 
+        /*
+        // TODO - Fix this
         operateOnCostData: function(costData)
         {
             this.log.indent();
@@ -2023,15 +2141,7 @@ ajk.core = {
                 {
                     var resource = gamePage.resPool.get(costData.prices[j].name);
                     var deficit = resource.value - costData.prices[j].val;
-                    var sufficient = false;
-                    if (resource.name == 'catnip')
-                    {
-                        sufficient = (deficit >= ajk.resources.catnipBuffer());
-                    }
-                    else
-                    {
-                        sufficient = (deficit >= 0);
-                    }
+                    var sufficient = (deficit >= 0);
                     if (!sufficient)
                     {
                         this.log.detail('Waiting on ' + resource.name);
@@ -2046,6 +2156,7 @@ ajk.core = {
             this.log.unindent();
             return allSucceeded;
         },
+        */
 
         operateOnPriority: function()
         {
@@ -2086,6 +2197,8 @@ ajk.core = {
                 var priority = ajk.analysis.filteredPriorityList[i];
                 this.log.debug('Attempting to act on ' + priority + ' (weight ' + ajk.analysis.data[priority].weight + ')');
 
+/*
+                // TODO - Fix this
                 var costData = ajk.analysis.data[priority].costData;
                 if (this.operateOnCostData(costData))
                 {
@@ -2117,6 +2230,7 @@ ajk.core = {
                         this.log.error('Item has insufficient resources, even after operating on costs successfully');
                     }
                 }
+                */
             }
         },
 
@@ -2126,22 +2240,22 @@ ajk.core = {
             this.successes = 0;
 
             ajk.cache.init();
-            ajk.timer.interval(timerData, 'Cache Initialization');
+            timerData.interval('Cache Initialization');
 
             this.analyze();
-            ajk.timer.interval(timerData, 'Analysis');
+            timerData.interval('Analysis');
 
             this.operateOnPriority();
-            ajk.timer.interval(timerData, 'Priority Operations');
+            timerData.interval('Priority Operations');
 
             ajk.resources.convert();
-            ajk.timer.interval(timerData, 'Resource Conversion');
+            timerData.interval('Resource Conversion');
 
             ajk.ui.refreshTables();
-            ajk.timer.interval(timerData, 'UI');
+            timerData.interval('UI');
 
             ajk.jobs.assignFreeKittens();
-            ajk.timer.end(timerData, 'Job Assignment');
+            timerData.end('Job Assignment');
 
             ajk.misc.checkForObservationEvent();
         },
@@ -2394,6 +2508,8 @@ ajk.ui = {
             return amountString + postFixes[index];
         },
 
+        /*
+        // TODO - Fix this
         convertCostDataToIndentedTable: function(costData, indent)
         {
             indent = indent || 1;
@@ -2421,6 +2537,7 @@ ajk.ui = {
             }
             return string;
         },
+        */
 
         refreshLogChannelToggles: function()
         {
@@ -2441,6 +2558,8 @@ ajk.ui = {
                 var itemKey = ajk.analysis.filteredPriorityList[i];
                 var itemWeight = ajk.analysis.data[itemKey].weight;
 
+                /*
+                // TODO - Fix this
                 var costData = ajk.analysis.data[itemKey].costData;
 
                 var timeString = this.convertTicksToTimeString(costData.time);
@@ -2454,6 +2573,7 @@ ajk.ui = {
                 var rowDetails = '<div style="color:rgb(128,128,128)">' + this.convertCostDataToIndentedTable(costData) + '</div>';
 
                 this.createCollapsiblePanel($('#' + rowId), containerId, rowTitle, rowDetails, true, true);
+                */
             }
         },
 
@@ -2461,10 +2581,13 @@ ajk.ui = {
         {
             var container = $('#resourceDemandTable');
             container.empty();
+            /*
+            // TODO - Fix this
             for (var resource in ajk.resources.demand)
             {
                 container.append('<tr><td>' + resource + '</td><td style="text-align:right">' + ajk.resources.demand[resource].amount.toFixed(2) + '</td></tr>');
             }
+            */
         },
 
         refreshFullPriorityTable: function()
@@ -2514,9 +2637,11 @@ ajk.ui = {
 
     refreshTables: function()
     {
+        /*
         this.internal.refreshPriorityTable();
         this.internal.refreshResourceDemandTable();
         this.internal.refreshFullPriorityTable();
+        */
     },
 
     clearExistingUI: function()
@@ -2590,5 +2715,11 @@ ajk.ui = {
     }
 };
 
-ajk.ui.createUI();
-ajk.core.simulateTick();
+//ajk.ui.createUI();
+//ajk.core.simulateTick();
+
+ajk.log.logLevel = 4;
+var pp = ajk.core.workshopTab.buttons[69];
+var test = ajk.costData.build(pp);
+ajk.log.flush();
+test;
