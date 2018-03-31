@@ -1,0 +1,27 @@
+{
+    "manifest_version": 2,
+    "name": "AJ Kittens Automation Extension",
+    "version": "1.0.0",
+    "web_accessible_resources": [
+        "base.js",
+        "log.js",
+        "backup.js",
+        "timer.js",
+        "cache.js",
+        "customItems.js",
+        "costData.js",
+        "jobs.js",
+        "adjustment.js",
+        "analysis.js",
+        "core.js",
+        "ui.js"
+    ],
+    "content_scripts":
+    [
+        {
+            "matches": ["*://bloodrizer.ru/games/kittens/*"],
+            "js": ["injection.js"],
+            "run_at":  "document_start"
+        }
+    ]
+}
