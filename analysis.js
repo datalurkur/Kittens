@@ -128,6 +128,73 @@ ajk.analysisModule.addPreprocessor(function(data, cache, itemMap, log) {
     data.eligible.forEach((itemName) => { data.addModifier(itemName, ajk.processors.config.oneShotWeightBonus, 'one-shot'); });
 });
 
+ajk.analysisModule.addPreprocessor(function(data, cache, itemMap, log) {
+    var params = {
+        max:        1,
+        inflection: [6000,  -1],
+        rolloff:    [18000, -4],
+    }
+    log.debug('Determining coefficients for cost adjustment functions');
+    log.indent();
+    log.debug('Using inflection point ' + params.inflection.join());
+    log.debug('Using rolloff point ' + params.rolloff.join());
+    log.debug('Maximum bonus ' + params.max);
+
+    params.slope = (params.inflection[1] - params.max) / params.inflection[0];
+    log.debug('Linear portion slope ' + params.slope);
+
+    var t0 = -m*s + n + s*i - j;
+    var t1 = m*n*s - m*s*j - n*s*i - s*i*j;
+
+    if (t0 == 0 || t1 == 0)
+    {
+        log.warn('Parameters chosen for nonlinear portion have no solution');
+        return;
+    }
+
+    params.solutionExists = true;
+
+    var i = params.inflection[0];
+    var j = params.inflection[1];
+    var m = params.rolloff[0];
+    var n = params.rolloff[1];
+    var s = params.slope;
+
+    var mMinusI = (m - i);
+    var nMinusJ = (n - j);
+    var aDenom = m*s - n - s*i + j;
+    log.detail('Intermediates: ' + [i,j,m,n,s,mMinusI,nMinusJ,aDenom].join());
+
+    params.a = -s*mMinusI*mMinusI*nMinusJ*nMinusJ / (aDenom * aDenom);
+    params.b = (-m*n + m*s*i + m*j - s*i*i) / (-m*s + n + s*i - j);
+    params.c = (-m*n*s + n*s*i + n*j - j*j) / (-m*s + n + s*i - j);
+    log.debug('Params chosen: ' + [params.a,params.b,params.c].join());
+
+    log.debug('Prices up to inflection point are scaled as ' + params.slope + '*x + ' + params.max);
+    log.debug('Prices past the inflection point are scaled as ' + params.a + '*(x + ' + params.b + ')^(-1) + ' + params.c);
+
+    data.eligible.forEach((itemName) => {
+        var costTime = itemMap[itemName].decisionTree.maxTime;
+        var modifier = 0;
+        if (costTime < params.inflection[0] || !params.solutionExists)
+        {
+            // Scale linearly
+            log.detail('Scaling linearly');
+            modifier = params.min + (costTime * params.slope);
+        }
+        else
+        {
+            // Scale non-linearly
+            log.detail('Scaling non-linearly');
+            modifier = (params.a / (params.b + costTime)) + params.c;
+        }
+        log.debug('Adjusting the weight of ' + itemName + ' by ' + modifier + ' to account for time-cost of ' + costTime);
+        data.addModifier(itemName, modifier, 'time');
+    });
+
+    log.unindent();
+});
+
 // Competition
 ajk.analysisModule.addPostprocessor(function(data, cache, itemMap, log) {
     log.debug('Filtering by resource competition');
