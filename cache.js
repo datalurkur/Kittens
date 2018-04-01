@@ -118,7 +118,7 @@ ajk.cache = {
             return Math.max(scaledBuffer, bufferData[0]);
         },
 
-        matchEffect: function(item, effect, typeIndex)
+        matchEffect: function(item, effect, effectQuantity, typeIndex)
         {
             var table = this.effectCache[this.effectTypes[typeIndex].type];
             for (var i = 0; i < this.effectTypes[typeIndex].postfixes.length; ++i)
@@ -128,34 +128,22 @@ ajk.cache = {
                 {
                     var resource = effect.substring(0, index);
 
-                    // Update effect map
-                    table.effectMap[effect] = resource;
+                    // Effect -> resource (eg 'give me the resource that oilPerTick consumes')
+                    table.effectToResource[effect] = resource;
 
-                    // Update item map
-                    if (!table.itemMap.hasOwnProperty(resource))
+                    // Resource -> items (eg 'give me all the producers of titanium')
+                    if (!table.resourceToItems.hasOwnProperty(resource))
                     {
-                        table.itemMap[resource] = [];
+                        table.resourceToItems[resource] = []
                     }
-                    table.itemMap[resource].push(item);
+                    table.resourceToItems[resource].push(item);
 
-                    // Update resource map
-                    if (!table.resourceMap.hasOwnProperty(resource))
+                    // Item -> resource data (eg 'give me data on all the resources steamworks consumes via its effects')
+                    if (!table.itemToResourceData.hasOwnProperty(item))
                     {
-                        table.resourceMap[resource] = [];
+                        table.itemToResourceData[item] = {};
                     }
-                    var found = false;
-                    for (var i = 0; i < table.resourceMap[resource].length; ++i)
-                    {
-                        if (table.resourceMap[resource][i] == effect)
-                        {
-                            found = true;
-                            break;
-                        }
-                    }
-                    if (!found)
-                    {
-                        table.resourceMap[resource].push(effect);
-                    }
+                    table.itemToResourceData[item][resource] = effectQuantity;
 
                     return true;
                 }
@@ -163,20 +151,15 @@ ajk.cache = {
             return false;
         },
 
-        cacheEffectsFor: function(itemList)
+        cacheEffectsFor: function(itemMap)
         {
-            this.log.debug('Caching effects for ' + itemList.length + ' items');
+            this.log.debug('Caching effects');
             this.log.indent();
 
-            for (var i = 0; i < itemList.length; ++i)
+            for (var itemName in itemMap)
             {
-                var itemData = itemList[i].model.metadata;
-                if (typeof itemData === 'undefined')
-                {
-                    this.log.trace('No metadata present for ' + itemList[i].model.name);
-                    continue;
-                }
-                this.log.trace('Caching effects for ' + itemData.name);
+                this.log.trace('Caching effects for ' + itemName);
+                var itemData = itemMap[itemName].item.model.metadata;
                 var effects = itemData.effects;
                 if (itemData.hasOwnProperty('stage'))
                 {
@@ -191,7 +174,7 @@ ajk.cache = {
                     }
                     for (var j = 0; j < this.effectTypes.length; ++j)
                     {
-                        if (this.matchEffect(itemData.name, effectName, j)) { break; }
+                        if (this.matchEffect(itemData.name, effectName, effects[effectName], j)) { break; }
                     }
                 }
             }
@@ -342,7 +325,7 @@ ajk.cache = {
         },
     },
 
-    rebuild: function(resources, allItems)
+    rebuild: function(resources, itemMap)
     {
         this.internal.log.debug('Rebuilding cache');
         this.internal.log.indent();
@@ -374,6 +357,7 @@ ajk.cache = {
                 perTick:   this.internal.getNetProductionOf(res.name),
                 buffer:    bufferNeeded,
                 available: Math.max(0, res.value - buffer),
+                max:       (res.maxValue == 0) ? Infinity : Math.max(0, res.maxValue - buffer),
             };
         }
 
@@ -408,18 +392,14 @@ ajk.cache = {
         for (var i = 0; i < this.internal.effectTypes.length; ++i)
         {
             this.internal.effectCache[this.internal.effectTypes[i].type] = {
-                effectMap:   {},
-                resourceMap: {},
-                itemMap:     {}
+                effectToResource:  {},
+                resourceToItems:   {},
+                itemToResourceData:  {},
             };
         }
 
-        // Take the item groupings and cache their effects
-        this.internal.log.detail('Rebuilding effect cache for ' + allItems.length + ' item groups');
-        for (var i = 0; i < allItems.length; ++i)
-        {
-            this.internal.cacheEffectsFor(allItems[i]);
-        }
+        // Take the items and cache their effects
+        this.internal.cacheEffectsFor(itemMap);
 
         // Cache exploration data
         this.internal.cacheExplorationData();
@@ -440,7 +420,15 @@ ajk.cache = {
     getCurrentProductionOfResource: function(resourceName)
     {
         return this.internal.resourceCache[resourceName].perTick;
-    }
+    },
 
-    // TODO - Add accessors for various bits of data
+    getMaxQuantityOfResource: function(resourceName)
+    {
+        return this.internal.resourceCache[resourceName].max;
+    },
+
+    getResourceConsumptionForItem: function(itemName)
+    {
+        return this.internal.effectCache['consumption'].itemToResourceData[itemName];
+    },
 };

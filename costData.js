@@ -32,7 +32,6 @@ ajk.costDataFactory = {
             this.log.detail('Building sparse data for ' + value + ' ' + resource);
             this.log.indent();
 
-            var rData = ajk.base.getResource(resource);
             var data = {
                 log: this.log,
 
@@ -42,7 +41,7 @@ ajk.costDataFactory = {
                 options:      [],
             };
 
-            if (rData.craftable)
+            if (ajk.base.getResource(resource).craftable && resource != 'wood')
             {
                 this.log.detail('Data includes crafting option');
                 var cData = ajk.base.getCraft(resource);
@@ -65,6 +64,18 @@ ajk.costDataFactory = {
         },
     },
     buildCostData: function(cache, item) { return this.internal.buildOptionCostData(cache, 'purchase', item.model.prices, [], 1, item); },
+    buildCombinedCostData: function(optionA, optionB)
+    {
+        var deps = [];
+        deps = deps.concat(optionA.dependencies);
+        deps = deps.concat(optionB.dependencies);
+        return {
+            method:       'combined',
+            dependencies: deps,
+            ratio:        1,
+            extraData:    null,
+        };
+    }
 };
 
 ajk.decisionTreeFactory = {
@@ -80,19 +91,41 @@ ajk.decisionTreeFactory = {
                 log: this.log,
 
                 // External objects and linkage
-                optionData:     option,
-                parentResource: parentResourceNode,
+                optionData:         option,
+                parentResource:     parentResourceNode,
 
                 // Child objects
-                dependencies:   [],
+                dependencies:       [],
 
                 // Computed properties
-                actionCount:    1,
-                maxTime:        0,
-                bottleneck:     null,
+                actionCount:        1,
+                capacityLimiters:   [],
+                capacityBlockers:   [],
+                maxTime:            0,
+                bottleneck:         null,
 
                 // Accumulator
-                consumption:    {},
+                consumption:        {},
+                consumptionApplied: false,
+
+                applyConsumption: function(recursive)
+                {
+                    if (this.consumptionApplied) { this.log.error('Applying consumption twice'); return; }
+                    this.consumptionApplied = true;
+                    for (var i = 0; i < this.dependencies.length; ++i) { this.dependencies[i].applyConsumption(recursive); }
+                },
+
+                rewindConsumption: function(recursive)
+                {
+                    if (!this.consumptionApplied) { this.log.error('Rewinding consumption twice'); return; }
+                    this.consumptionApplied = false;
+                    for (var i = 0; i < this.dependencies.length; ++i) { this.dependencies[i].rewindConsumption(recursive); }
+                },
+
+                traverse: function(func)
+                {
+                    for (var i = 0; i < this.dependencies.length; ++i) { this.dependencies[i].traverse(func); }
+                },
 
                 update: function()
                 {
@@ -106,19 +139,25 @@ ajk.decisionTreeFactory = {
                     else
                     {
                         this.actionCount = Math.ceil(this.parentResource.deficit / this.optionData.ratio);
-                        this.consumption = $.extend({}, this.parentResource.consumption);
+                        this.consumption = this.parentResource.consumption;
                     }
                     this.log.detail('Costed option at ' + this.actionCount + ' actions required');
 
                     for (var i = 0; i < this.dependencies.length; ++i)
                     {
                         this.dependencies[i].update();
+                        this.capacityLimiters = this.capacityLimiters.concat(this.dependencies[i].capacityLimiters);
+                        this.capacityBlockers = this.capacityBlockers.concat(this.dependencies[i].capacityBlockers);
                         if (this.maxTime < this.dependencies[i].decisionTime)
                         {
                             this.maxTime = this.dependencies[i].decisionTime;
                             this.bottleneck = this.dependencies[i];
                         }
                     }
+
+                    // This implicitly happens during update
+                    this.consumptionApplied = true;
+
                     this.log.unindent();
                 },
             };
@@ -141,50 +180,37 @@ ajk.decisionTreeFactory = {
                 log: this.log,
 
                 // External objects and linkage
-                costData:        costData,
-                parentOption:    parentOptionNode,
+                costData:           costData,
+                parentOption:       parentOptionNode,
 
                 // Child objects
-                options:         [],
+                options:            [],
 
                 // Computed properties
-                multiplier:      1,
-                consumed:        0,
-                deficit:         0,
-                baseTime:        0,
-                decision:        null,
-                decisionTime:    Infinity,
+                capacityLimiters:   [],
+                capacityBlockers:   [],
+                multiplier:         1,
+                consumed:           0,
+                deficit:            0,
+                baseTime:           0,
+                decision:           null,
+                decisionTime:       Infinity,
 
                 // Accumulator
-                consumption: {},
+                consumption:        {},
+                consumptionApplied: false,
 
-                update: function()
+                applyConsumption: function(recursive)
                 {
-                    this.log.trace('Updating resource node: ' + this.costData.resourceName);
-                    this.log.indent();
-
-                    var rawAmountAvailable = cache.getAvailableQuantityOfResource(this.costData.resourceName);
-                    var production         = cache.getCurrentProductionOfResource(this.costData.resourceName);
-
-                    // Compute properties dependent on the parent node
-                    if (this.parentOption == null)
-                    {
-                        this.multiplier  = 1;
-                        this.consumption = {};
-                    }
-                    else
-                    {
-                        this.multiplier  = this.parentOption.actionCount;
-                        this.consumption = this.parentOption.consumption;
-                    }
-                    this.log.trace('Costing resource with multiplier ' + this.multiplier);
+                    if (this.consumptionApplied) { this.log.error('Applying consumption twice'); return; }
+                    this.consumptionApplied = true;
 
                     // Compute properties dependent on accumulated resource consumption at this decision
-                    var adjustedAmountAvailable = rawAmountAvailable;
+                    var adjustedAmountAvailable = cache.getAvailableQuantityOfResource(this.costData.resourceName);
                     var amountRequired = this.costData.price * this.multiplier;
-                    if (this.consumption.hasOwnProperty(this.costData.resoureName))
+                    if (this.consumption.hasOwnProperty(this.costData.resourceName))
                     {
-                        adjustedAmountAvailable -= this.consumption(this.costData.resourceName);
+                        adjustedAmountAvailable -= this.consumption[this.costData.resourceName];
                     }
 
                     this.log.trace('Computing deficit based on adjusted cost and amount available ' + amountRequired + ' and ' + adjustedAmountAvailable);
@@ -198,17 +224,62 @@ ajk.decisionTreeFactory = {
                         this.consumption[this.costData.resourceName] = 0;
                     }
                     this.consumption[this.costData.resourceName] += this.consumed;
+                },
 
-                    // Compute time-to-completion based on deficit
-                    if (this.deficit == 0) { this.baseTime = 0; }
+                rewindConsumption: function(recursive)
+                {
+                    if (!this.consumptionApplied) { this.log.error('Rewinding consumption twice'); return; }
+                    this.consumptionApplied = false;
+
+                    this.consumption[this.costData.resourceName] -= this.consumed;
+                },
+
+                traverse: function(func)
+                {
+                    if (this.decision == null) { func(this); }
+                    else { this.decision.traverse(func); }
+                },
+
+                update: function()
+                {
+                    this.log.trace('Updating resource node: ' + this.costData.resourceName);
+                    this.log.indent();
+
+                    // Compute properties dependent on the parent node
+                    if (this.parentOption == null)
+                    {
+                        this.multiplier  = 1;
+                        this.consumption = {};
+                    }
                     else
                     {
-                        this.baseTime = this.deficit / production;
+                        this.multiplier  = this.parentOption.actionCount;
+                        this.consumption = this.parentOption.consumption;
+                    }
+
+                    var maxCapacity = cache.getMaxQuantityOfResource(this.costData.resourceName);
+                    if (this.costData.price > maxCapacity)
+                    {
+                        this.log.trace('Capacity limited (max storage is ' + maxCapacity + ')');
+                        this.capacityBlockers.push([this.costData.resourceName, this.costData.price]);
+                    }
+
+                    this.log.trace('Costing resource with multiplier ' + this.multiplier);
+                    this.applyConsumption(false);
+
+                    // Compute time-to-completion based on deficit
+                    if (this.deficit == 0)
+                    {
+                        this.baseTime = 0;
+                        this.log.trace('Resource is immediately available');
+                    }
+                    else
+                    {
+                        this.baseTime = this.deficit / cache.getCurrentProductionOfResource(this.costData.resourceName);
                         if (this.baseTime < 0) { this.baseTime = Infinity; }
+                        this.log.trace('It will be ' + this.baseTime + ' ticks until quantity ' + this.deficit + ' is produced');
                     }
                     this.decisionTime = this.baseTime;
-
-                    this.log.trace('It will be ' + this.baseTime + ' ticks until quantity ' + this.deficit + ' is produced');
 
                     // TODO - Factor current production time into options (or figure out if there's even an intelligent way to do that)
                     // In the amount of time we wait to trade / craft the deficit of a resource, there may be some production happening in the background that actually changes the amount of that resource we need to trade / craft for
@@ -217,16 +288,44 @@ ajk.decisionTreeFactory = {
                     // The benefits of doing this are likely marginal at best...
                     // Nah. This is probably gonna stay a TODO forever.
 
-                    // Update the dependent decision trees and adjust the decision / decision time accordingly
+                    // Update the dependent decision trees
+                    this.options.forEach((opt) => {
+                        opt.update();
+                        opt.rewindConsumption(true);
+                    });
+
+                    // Sort the options by max time
+                    this.options.sort((a, b) => { return a.maxTime - b.maxTime; });
+
+                    // Choose the best possible path
                     for (var i = 0; i < this.options.length; ++i)
                     {
-                        this.options[i].update();
-                        if (this.options[i].maxTime < this.decisionTime)
+                        if (this.options[i].capacityBlockers.length == 0)
                         {
-                            this.log.trace('Updating decision to ' + this.options[i].optionData.method + ' based on improved time of ' + this.options[i].maxTime + ' (old time was ' + this.decisionTime + ')');
                             this.decision     = this.options[i];
                             this.decisionTime = this.options[i].maxTime;
+                            break;
                         }
+                    }
+
+                    // Make note of capacity blockers and limitations
+                    this.options.forEach((opt) => {
+                        this.capacityLimiters = this.capacityLimiters.concat(opt.capacityLimiters);
+                        if (this.decisionTime == Infinity)
+                        {
+                            // If the current decision is going to take forever, assume that any blockers in the options are blockers for the resource
+                            this.log.detail('Treating capacity limitations as blockers, given production time of ' + this.decisionTime);
+                            this.capacityBlockers = this.capacityBlockers.concat(opt.capacityBlockers);
+                        }
+                        else
+                        {
+                            this.capacityLimiters = this.capacityLimiters.concat(opt.capacityLimiters);
+                        }
+                    });
+
+                    if (this.decision != null)
+                    {
+                        this.decision.applyConsumption(true);
                     }
 
                     this.log.unindent();
@@ -242,103 +341,24 @@ ajk.decisionTreeFactory = {
             return dTree;
         },
     },
+
     buildDecisionTree: function(cache, costData) { return this.internal.buildOptionNode(cache, costData, null); },
-};
 
-/*
-
-        populateFlatList: function(data, decisionTree)
+    extractBottlenecks: function(tree)
+    {
+        var unordered = [];
+        for (var resource in tree.consumption)
         {
-            for (var i = 0; i < data.dependencies.length; ++i)
-            {
-                var dep = data.dependencies[i];
-                this.log.detail('Checking dependency ' + dep.resourceName + ' for resource requirements');
-                this.log.indent();
-                if (dep.decision != null)
-                {
-                    this.populateFlatList(dep.decision, resourceCache);
-                }
-                else if (dep.deficit > 0)
-                {
-                    this.log.detail('Adding ' + dep.deficit + ' ' + dep.resourceName + ' to the list of in-demand resources');
-                    resourceCache.lacking[dep.resourceName] += dep.deficit;
-                }
-                this.log.unindent();
-            }
-        },
-
-        computeResults: function(data, decisionTree)
-        {
-            var maxTime = 0;
-            var bottlenecks = [];
-            for (var resource in resourceCache.lacking)
-            {
-                var lacking = resourceCache.lacking[resource];
-                if (lacking > 0)
-                {
-                    if (resourceCache.buffer[resource] > 0)
-                    {
-                        this.log.detail('Adding ' + resourceCache.buffer[resource] + ' to cost to account for missing ' + resource + ' buffer');
-                        lacking += resourceCache.buffer[resource];
-                    }
-                    var resProduction = ajk.resources.getNetProductionOf(resource);
-                    var thisTime = lacking / resProduction;
-                    resourceCache.waitTime[resource] = thisTime;
-
-                    var emplaced = false;
-                    for (var i = 0; i < bottlenecks.length; ++i)
-                    {
-                        if (thisTime > bottlenecks[i][1])
-                        {
-                            bottlenecks.splice(i, 0, [resource, thisTime]);
-                            emplaced = true;
-                            break;
-                        }
-                    }
-                    if (!emplaced)
-                    {
-                        bottlenecks.push([resource, thisTime]);
-                    }
-
-                    this.log.detail('It will take ' + thisTime.toFixed(2) + ' ticks to produce ' + lacking.toFixed(2) + ' ' + resource + ' at a rate of ' + resProduction.toFixed(2) + ' per tick');
-                    maxTime = Math.max(maxTime, thisTime);
-                }
-            }
-
-            data.flatTime    = maxTime;
-            data.bottlenecks = bottlenecks;
-
-            resourceCache.reset();
-        },
+            unordered.push([resource, tree.consumption[resource]]);
+        }
+        return unordered.sort(function(a, b) { return a[1] - b[1]; });
     },
 
-    isSlowedBy: function(data, resource, amount)
+    areInCompetition: function(cache, treeA, treeB)
     {
-
-    },
-
-    build: function(item, resourceCache)
-    {
-        var timerData = ajk.timer.start('Cost Data Contruction');
-
-        var data = this.internal.buildSparseDependencies('construct', item.model.prices, [], 1, item);
-        timerData.interval('Build Sparse Dependencies');
-
-        var dTree = this.internal.buildEmptyDecisionTree(null);
-        this.internal.buildDependencyDecisionTree(1, data, dTree);
-
-        this.internal.populateTimeDependencyData(1, data, resourceCache);
-        timerData.interval('Populate Time Data');
-
-        data.consume(resourceCache, true);
-        timerData.interval('Mark Resources');
-
-        this.internal.populateFlatList(data, resourceCache);
-        timerData.interval('Populate Flat List');
-
-        this.internal.computeResults(data, resourceCache);
-        timerData.end('Compute Results');
-        return data;
+        var combinedCostData = ajk.costDataFactory.buildCombinedCostData(treeA.optionData, treeB.optionData);
+        var combinedTree = this.buildDecisionTree(cache, combinedCostData);
+        combinedTree.update();
+        return (combinedTree.maxTime > treeA.maxTime && combinedTree.maxTime > treeB.maxTime)
     },
 };
-*/

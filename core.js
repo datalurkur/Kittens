@@ -27,13 +27,12 @@ ajk.core = {
         conversionMaxRatio: 0.97,
 
         // Operating variables
-        tickThread: null,
+        tickThread:   null,
 
-        successes: -1, // Ensure the cache gets built on the first tick
-        explorationSuccess: false,
-
-        cache: ajk.cache,
-        itemGroups: [],
+        successes:    -1, // Ensure the cache gets built on the first tick
+        cache:        ajk.cache,
+        itemData:     {},
+        analysisData: null,
 
         checkForObservationEvent: function()
         {
@@ -41,102 +40,125 @@ ajk.core = {
             if (btn != null) { btn.click(); }
         },
 
-        prepare: function()
+        rebuildItemList: function()
         {
-            // If we didn't build anything, no buttons need updating and the cache doesn't need rebuilding
-            if (this.successes == 0)
-            {
-                this.log.debug('No successes, skipping cache and item group refresh');
-                return;
-            }
+            this.itemData = {};
 
-            this.log.debug('Refreshing cache and item groups');
-            this.successes = 0;
-
-            // Collect all the buttons
-            var resources = ajk.base.getAllResources();
-            this.itemGroups = [];
+            var pItems = [];
 
             var bonfireTab = ajk.base.bonfireTab();
             ajk.base.switchToTab(bonfireTab);
-            this.itemGroups.push(bonfireTab.buttons);
+            pItems = pItems.concat(bonfireTab.buttons);
 
             var scienceTab = ajk.base.scienceTab();
             if (scienceTab.visible)
             {
                 ajk.base.switchToTab(scienceTab);
-                this.itemGroups.push(scienceTab.buttons);
+                pItems = pItems.concat(scienceTab.buttons);
             }
 
             var workshopTab = ajk.base.workshopTab();
             if (workshopTab.visible)
             {
                 ajk.base.switchToTab(workshopTab);
-                this.itemGroups.push(workshopTab.buttons);
+                pItems = pItems.concat(workshopTab.buttons);
             }
 
             var religionTab = ajk.base.religionTab();
             if (religionTab.visible)
             {
                 ajk.base.switchToTab(religionTab);
-                this.itemGroups.push(religionTab.rUpgradeButtons);
-                this.itemGroups.push(religionTab.zgUpgradeButtons);
+                pItems = pItems.concat(religionTab.rUpgradeButtons);
+                pItems = pItems.concat(religionTab.zgUpgradeButtons);
             }
 
             var spaceTab = ajk.base.spaceTab();
             if (spaceTab.visible)
             {
                 ajk.base.switchToTab(spaceTab);
-                this.itemGroups.push(spaceTab.GCPanel.children);
+                pItems = pItems.concat(spaceTab.GCPanel.children);
                 // TODO - Add the rest of the planets
             }
             ajk.base.switchToTab(null);
 
-            // Rebuild the cache
-            this.cache.rebuild(resources, this.itemGroups);
+            for (var i = 0; i < pItems.length; ++i)
+            {
+                var mData = pItems[i].model.metadata;
+                if (typeof mData === 'undefined')        { continue; }
+                if (!mData.unlocked || (typeof mData.researched !== 'undefined' && mData.researched)) { continue; }
+                this.itemData[mData.name] = {
+                    item:         pItems[i],
+                    costData:     null,
+                    decisionTree: null,
+                };
+            }
         },
 
-/*
-        analyze: function()
+        rebuildCache: function()
         {
-            var timerData = ajk.timer.start('Analysis');
+            var resources = ajk.base.getAllResources();
+            this.cache.rebuild(resources, this.itemData);
+        },
 
-            ajk.analysis.reset();
-            timerData.interval('Reset');
-
-            ajk.analysis.preanalysis();
-            timerData.interval('Pre-Analysis Pass');
-
-            ajk.analysis.analyzeItems(ajk.customItems.get());
-            timerData.interval('Custom Item Analysis');
-
-            ajk.ui.switchToTab('Bonfire');
-            ajk.analysis.analyzeItems(ajk.core.bonfireTab.buttons);
-            timerData.interval('Bonfire Analysis');
-
-            if (ajk.core.scienceTab.visible)
+        rebuildCostData: function()
+        {
+            this.data = {};
+            for (var itemName in this.itemData)
             {
-                ajk.ui.switchToTab('Sciene');
-                ajk.analysis.analyzeItems(ajk.core.scienceTab.buttons);
-                timerData.interval('Science Analysis');
+                this.log.detail('Rebuilding cost data for ' + itemName);
+                this.log.indent();
+                var costData = ajk.costDataFactory.buildCostData(this.cache, this.itemData[itemName].item);
+                this.itemData[itemName].costData = costData;
+                this.log.unindent();
             }
+        },
 
-            if (ajk.base.workshopTab.visible)
-            {
-                ajk.ui.switchToTab('Workshop');
-                ajk.analysis.analyzeItems(ajk.base.workshopTab.buttons);
-                timerData.interval('Workshop Analysis');
-            }
+        rebuildAndPrioritize: function()
+        {
+            var timerData = ajk.timer.start('Rebuilding / Analysis');
+            this.rebuildItemList();
+            timerData.interval('Rebuild Item List');
 
-            ajk.analysis.analyzeResults();
-            timerData.interval('Analysis Resolution Pass');
+            this.rebuildCache();
+            timerData.interval('Rebuild Effect / Resource / Trade Cache');
 
-            ajk.analysis.postAnalysisPass();
-            timerData.end('Post-Analysis Pass');
+            this.rebuildCostData();
+            timerData.end('Rebuild Cost Data');
 
-            ajk.ui.switchToTab(null);
-            timerData.end('Cleanup');
-        },*/
+            this.analysisData = ajk.analysisModule.prepare(this.itemData);
+            timerData.interval('Analysis Preparation');
+
+            this.analysisData.eligible.forEach((itemName) => {
+                this.log.detail('Rebuilding decision tree for ' + itemName);
+                this.log.indent();
+                var decisionTree = ajk.decisionTreeFactory.buildDecisionTree(this.cache, this.itemData[itemName].costData);
+                decisionTree.update();
+                this.itemData[itemName].decisionTree = decisionTree;
+
+                this.itemData[itemName].bottlenecks = ajk.decisionTreeFactory.extractBottlenecks(decisionTree);
+                this.log.unindent();
+            });
+            timerData.interval('Decision Tree Population');
+
+            ajk.analysisModule.preprocess(this.analysisData, this.cache, this.itemData);
+            timerData.interval('Analysis preprocessing');
+
+            ajk.analysisModule.prioritize(this.analysisData);
+            timerData.interval('Prioritization');
+
+            ajk.analysisModule.postprocess(this.analysisData, this.cache, this.itemData);
+            timerData.interval('Analysis postprocessing');
+        },
+
+        pursuePriority: function()
+        {
+
+        },
+
+        convertResources: function()
+        {
+
+        },
 
         /*
         // TODO - Fix this
@@ -338,27 +360,32 @@ ajk.core = {
             this.checkForObservationEvent();
             timerData.interval('Event Observation');
 
-            this.prepare();
-            timerData.interval('Preparation');
+            // If we didn't build anything previously, we don't need to recompute priorities and such
+            if (this.successes != 0)
+            {
+                this.rebuildAndPrioritize();
+                timerData.interval('Rebuild and Prioritize');
+            }
+            else
+            {
+                this.analysisData.eligible.forEach((itemName) => {
+                    this.itemData[itemName].decisionTree.rewindConsumption(true);
+                    this.itemData[itemName].decisionTree.update();
+                });
+                timerData.interval('Update Decision Trees');
+            }
+            this.successes = 0;
+
+            this.pursuePriority();
+
+            this.convertResources();
+
+            //this.refreshUI();
 
             timerData.end('Done');
-/*
-            this.analyze();
-            timerData.interval('Analysis');
-
-            this.operateOnPriority();
-            timerData.interval('Priority Operations');
-
-            ajk.resources.convert();
-            timerData.interval('Resource Conversion');
-
-            ajk.ui.refreshTables();
-            timerData.interval('UI');
-
+            /*
             ajk.jobs.assignFreeKittens();
             timerData.end('Job Assignment');
-
-            ajk.misc.checkForObservationEvent();
             */
         },
 
@@ -386,18 +413,6 @@ ajk.core = {
         ajk.simulate = true;
         this.internal.tick();
         ajk.simulate = pSimulate;
-    },
-
-    testData: null,
-    test: function()
-    {
-        // Get a test item
-        var testItem = ajk.base.bonfireTab().buttons[13];
-        var costData = ajk.costDataFactory.buildCostData(this.internal.cache, testItem);
-        var decision = ajk.decisionTreeFactory.buildDecisionTree(this.internal.cache, costData);
-        decision.update();
-        ajk.log.flush();
-        this.testData = [costData, decision];
     },
 
     shouldTick: function(doTick)

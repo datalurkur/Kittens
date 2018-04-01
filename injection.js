@@ -7,7 +7,6 @@ const scripts = [
     'customItems.js',
     'costData.js',
     'jobs.js',
-    'adjustment.js',
     'analysis.js',
     'core.js',
     'ui.js'
@@ -25,7 +24,6 @@ const loadScript = function(index)
     {
         console.log('Script ' + scriptName + ' loaded');
         loadScript(index + 1);
-        script.onload.remove();
     }
     head.appendChild(script);
 }
