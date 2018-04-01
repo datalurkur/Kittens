@@ -34,6 +34,8 @@ ajk.core = {
         itemData:     {},
         analysisData: null,
 
+        priorityResourceDemand: {},
+
         checkForObservationEvent: function()
         {
             var btn = ajk.base.getObserveButton();
@@ -123,7 +125,7 @@ ajk.core = {
             timerData.interval('Rebuild Effect / Resource / Trade Cache');
 
             this.rebuildCostData();
-            timerData.end('Rebuild Cost Data');
+            timerData.interval('Rebuild Cost Data');
 
             this.analysisData = ajk.analysisModule.prepare(this.itemData);
             timerData.interval('Analysis Preparation');
@@ -132,10 +134,7 @@ ajk.core = {
                 this.log.detail('Rebuilding decision tree for ' + itemName);
                 this.log.indent();
                 var decisionTree = ajk.decisionTreeFactory.buildDecisionTree(this.cache, this.itemData[itemName].costData);
-                decisionTree.update();
                 this.itemData[itemName].decisionTree = decisionTree;
-
-                this.itemData[itemName].bottlenecks = ajk.decisionTreeFactory.extractBottlenecks(decisionTree);
                 this.log.unindent();
             });
             timerData.interval('Decision Tree Population');
@@ -144,79 +143,74 @@ ajk.core = {
             timerData.interval('Analysis preprocessing');
 
             ajk.analysisModule.prioritize(this.analysisData);
-            timerData.interval('Prioritization');
+            timerData.interval('Prioritization step 1');
 
             ajk.analysisModule.postprocess(this.analysisData, this.cache, this.itemData);
             timerData.interval('Analysis postprocessing');
+
+            ajk.analysisModule.prioritize(this.analysisData);
+            timerData.end('Prioritization step 2');
         },
 
         pursuePriority: function()
         {
+            this.priorityResourceDemand = {};
 
+            this.analysisData.priorityOrder.forEach((itemName) => {
+                this.log.debug('Acting on priority ' + itemName);
+                this.log.indent();
+
+                var tree = this.itemData[itemName].decisionTree;
+                tree.traverse((opDecision) => {
+                    this.log.debug(opDecision.identifier());
+                    if (opDecision.optionData.method == 'craft')
+                    {
+                        ajk.base.craft(opDecision.optionData.extraData.name, opDecision.actionCount);
+                    }
+                    else if (opDecision.optionData.method == 'trade')
+                    {
+                        ajk.base.trade(opDecision.optionData.extraData, opDecision.actionCount);
+                    }
+                    else if (opDecision.optionData.method == 'purchase')
+                    {
+                        if (opDecision.maxTime == 0)
+                        {
+                            this.log.detail('Ready for purchase');
+                            if (!ajk.base.purchaseItem(opDecision.optionData.extraData))
+                            {
+                                this.log.warn('Failed to purchase');
+                            }
+                            else
+                            {
+                                this.log.info('Purchased ' + opDecision.optionData.identifier);
+                                this.successes += 1;
+                            }
+                        }
+                        else
+                        {
+                            this.log.detail('Waiting on resources for purchase');
+                        }
+                    }
+                    else if (opDecision.optionData.method == 'explore')
+                    {
+                        // TODO
+                    }
+                }, null, true);
+
+                for (var resource in tree.demand)
+                {
+                    ajk.util.ensureKeyAndModify(this.priorityResourceDemand, resource, 0, tree.demand[resource]);
+                }
+
+                this.log.unindent();
+            });
         },
 
         convertResources: function()
         {
-
+            this.log.debug('Converting resources');
         },
 
-        /*
-        // TODO - Fix this
-        operateOnCostData: function(costData)
-        {
-            this.log.indent();
-            var allSucceeded = true;
-            for (var j = costData.prices.length - 1; j >= 0; --j)
-            {
-                var price = costData.prices[j];
-                this.log.detail('Operating on cost data of ' + price.name);
-                if (price.hasOwnProperty('dependencies'))
-                {
-                    this.log.trace('Diving into dependencies');
-                    allSucceeded &= this.operateOnCostData(costData.prices[j].dependencies);
-                }
-                if (price.method == 'Trade')
-                {
-                     if (ajk.trade.tradeWith(price.tradeRace, price.trades))
-                     {
-                        // TODO - Replace this with the resource cache
-                        var requirementMet = (ajk.base.getResource(price.name).value >= price.amount);
-                        if (!requirementMet)
-                        {
-                            this.log.debug('Trading failed to satisfy expected requirements');
-                        }
-                        allSucceeded &= requirementMet;
-                     }
-                     else
-                     {
-                        allSucceeded = false;
-                     }
-                }
-                else if (price.method == 'Craft')
-                {
-                    allSucceeded &= ajk.base.craft(price.name, price.craftAmount);
-                }
-                else
-                {
-                    // TODO - Replace this with the resource cache
-                    var resource = ajk.base.getResource(costData.prices[j].name);
-                    var deficit = resource.value - costData.prices[j].val;
-                    var sufficient = (deficit >= 0);
-                    if (!sufficient)
-                    {
-                        this.log.detail('Waiting on ' + resource.name);
-                    }
-                    else
-                    {
-                        this.log.trace('Sufficient quantity exists (deficit: ' + deficit + ')');
-                    }
-                    allSucceeded &= sufficient;
-                }
-            }
-            this.log.unindent();
-            return allSucceeded;
-        },
-        */
         /*
         operateOnPriority: function()
         {
@@ -369,24 +363,29 @@ ajk.core = {
             else
             {
                 this.analysisData.eligible.forEach((itemName) => {
-                    this.itemData[itemName].decisionTree.rewindConsumption(true);
-                    this.itemData[itemName].decisionTree.update();
+                    this.log.debug('Rebuilding decision tree for ' + itemName);
+                    this.log.indent();
+                    ajk.decisionTreeFactory.updateDecisionTree(this.itemData[itemName].decisionTree);
+                    this.log.unindent();
                 });
                 timerData.interval('Update Decision Trees');
             }
             this.successes = 0;
 
+            ajk.analysisModule.computeBottlenecks(this.analysisData, this.cache, this.itemData);
+            timerData.interval('Bottleneck Analysis');
+
             this.pursuePriority();
+            timerData.interval('Pursue Priority');
 
             this.convertResources();
+            timerData.interval('Resource Conversion');
+
+            //ajk.jobs.assignFreeKittens();
+            timerData.interval('Job Assignment');
 
             //this.refreshUI();
-
-            timerData.end('Done');
-            /*
-            ajk.jobs.assignFreeKittens();
-            timerData.end('Job Assignment');
-            */
+            timerData.end('UI Refresh');
         },
 
         tick: function()

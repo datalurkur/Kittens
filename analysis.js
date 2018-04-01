@@ -43,8 +43,12 @@ ajk.analysisModule = {
         this.internal.log.debug('Performing analysis postprocessing pass');
         this.internal.postprocessors.forEach((filter) => { filter(data, cache, itemMap, this.internal.log); });
     },
-    addPreprocessor:  function(operation) { this.internal.preprocessors.push(operation);      },
-    addPostprocessor: function(operation) { this.internal.postprocessors.push(operation);  },
+    computeBottlenecks: function(data, cache, itemMap)
+    {
+
+    },
+    addPreprocessor:  function(operation) { this.internal.preprocessors.push(operation);  },
+    addPostprocessor: function(operation) { this.internal.postprocessors.push(operation); },
 };
 
 ajk.processors = { config: {} };
@@ -60,11 +64,7 @@ ajk.analysisModule.addPreprocessor(function(data, cache, itemMap, log) {
         {
             log.debug('Excluding ' + itemName + ' because of lacking capacity');
             decisionTree.capacityBlockers.forEach((blocker) => {
-                if (!data.resourceCapacityLimitations.hasOwnProperty(blocker[0]))
-                {
-                    data.resourceCapacityLimitations[blocker[0]] = [];
-                }
-                data.resourceCapacityLimitations[blocker[0]].push(blocker[1]);
+                ajk.util.ensureKey(data.resourceCapacityLimitations, blocker[0], []).push(blocker[1]);
             });
         }
         else
@@ -90,11 +90,7 @@ ajk.analysisModule.addPreprocessor(function(data, cache, itemMap, log) {
             if (cache.getCurrentProductionOfResource(resourceName) + consumption[resourceName] <= 0)
             {
                 exclude = true;
-                if (!data.resourceProductionLimitations.hasOwnProperty(resourceName))
-                {
-                    data.resourceProductionLimitations[resourceName] = [];
-                }
-                data.resourceProductionLimitations[resourceName].push(consumption[resourceName]);
+                ajk.util.ensureKey(data.resourceProductionLimitations, resourceName, []).push(consumption[resourceName]);
             }
         }
         if (!exclude)

@@ -132,18 +132,10 @@ ajk.cache = {
                     table.effectToResource[effect] = resource;
 
                     // Resource -> items (eg 'give me all the producers of titanium')
-                    if (!table.resourceToItems.hasOwnProperty(resource))
-                    {
-                        table.resourceToItems[resource] = []
-                    }
-                    table.resourceToItems[resource].push(item);
+                    ajk.util.ensureKey(table.resourceToItems, resource, []).push(item);
 
                     // Item -> resource data (eg 'give me data on all the resources steamworks consumes via its effects')
-                    if (!table.itemToResourceData.hasOwnProperty(item))
-                    {
-                        table.itemToResourceData[item] = {};
-                    }
-                    table.itemToResourceData[item][resource] = effectQuantity;
+                    ajk.util.ensureKey(table.itemToResourceData, item, {})[resource] = effectQuantity;
 
                     return true;
                 }
@@ -285,11 +277,7 @@ ajk.cache = {
                     var resourceName = race.sells[j].name;
                     var tradeAmount = this.getTradeAmountFor(race, race.sells[j]);
                     saleData[resourceName] = tradeAmount;
-                    if (!this.tradeCache.resources.hasOwnProperty(resourceName))
-                    {
-                        this.tradeCache.resources[resourceName] = [];
-                    }
-                    this.tradeCache.resources[resourceName].push({
+                    ajk.util.ensureKey(this.tradeCache.resources, resourceName, []).push({
                         race: race,
                         tradeAmount: tradeAmount
                     });
@@ -392,9 +380,9 @@ ajk.cache = {
         for (var i = 0; i < this.internal.effectTypes.length; ++i)
         {
             this.internal.effectCache[this.internal.effectTypes[i].type] = {
-                effectToResource:  {},
-                resourceToItems:   {},
-                itemToResourceData:  {},
+                effectToResource:   {},
+                resourceToItems:    {},
+                itemToResourceData: {},
             };
         }
 

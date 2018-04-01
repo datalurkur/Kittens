@@ -101,16 +101,42 @@ var ajk = {
             if (this.simulate) { return; }
             gamePage.workshop.craftAll(resName);
         },
-        trade: function(raceName, amount)
+        trade: function(race, amount)
         {
             if (this.simulate) { return; }
-            gamePage.diplomacy.trade(this.getRace(raceName), amount);
+            gamePage.diplomacy.trade(race, amount);
         },
         tradeAll: function(raceName)
         {
             if (this.simulate) { return; }
             gamePage.diplomacy.trade(this.getRace(raceName));
-        }
+        },
+        purchaseItem: function(item)
+        {
+            // TODO - Is this necessary?
+            item.update();
+            if (!item.controller.hasResources(item.model)) { return false; }
+            if (this.simulate) { return true; }
+            var success = false;
+            // TODO - Fix this callback for exploration
+            item.controller.buyItem(item.model, {}, function(result) {
+                success = result;
+            });
+            return success;
+        },
+    },
+};
+
+ajk.util = {
+    ensureKey: function(object, key, defaultValue)
+    {
+        if (!object.hasOwnProperty(key)) { object[key] = defaultValue; }
+        return object[key];
+    },
+    ensureKeyAndModify: function(object, key, defaultValue, mod)
+    {
+        if (!object.hasOwnProperty(key)) { object[key] = defaultValue; }
+        object[key] += mod;
     },
 };
 
@@ -118,39 +144,63 @@ ajk.log = {
     detailedLogsOnSuccess: false,
     detailedLogsOnError: true,
 
-    logLevel: 5,
-
     internal:
     {
-        errorLevel: -1,
-        warnLevel:   0,
-        infoLevel:   1,
-        debugLevel:  2,
-        detailLevel: 3,
-        traceLevel:  4,
+        errorLevel:  0,
+        warnLevel:   1,
+        infoLevel:   2,
+        debugLevel:  3,
+        detailLevel: 4,
+        traceLevel:  5,
 
-        channels: {},
-        channelMask: -1,
-        currentChannel: 1,
+        channels:          {},
+        channelMask:      -1,
+        currentChannel:    1,
         channelNameLength: 0,
 
+        logLevel:    5,
         indentLevel: 0,
 
         debugQueue: [],
-        logQueue: [],
-
-        logMultiple(messages, level, channel)
-        {
-            for (var i = 0; i < messages.length; ++i)
-            {
-                this.logQueue.push(['  '.repeat(this.indentLevel) + messages[i], level, channel]);
-            }
-        },
+        logQueue:   [],
 
         logInternal: function(message, level, channel)
         {
             var messages = message.split('\n');
-            this.logMultiple(messages, level, channel);
+            this.logQueue.push({
+                messages: messages,
+                indent:   this.indentLevel,
+                level:    level,
+                channel:  channel
+            });
+        },
+
+        printLogsToConsole: function(ignoreLevel)
+        {
+            this.logQueue.forEach((msgData) => {
+                if (ignoreLevel || (this.logLevel >= msgData.level && (msgData.channel == undefined || this.channelActive(msgData.channel))))
+                {
+                    var marker      = '[' + msgData.channel.padStart(this.channelNameLength) + '] ';
+                    var emptyMarker = ' '.repeat(marker.length);
+                    var padding     = '  '.repeat(msgData.indent) + '%c';
+                    var color       = 'color:black';
+
+                         if (msgData.level == this.errorLevel) { color = 'color:red';    }
+                    else if (msgData.level == this.warnLevel)  { color = 'color:orange'; }
+
+                    for (var i = 0; i < msgData.messages.length; ++i)
+                    {
+                        var out = ((i == 0) ? marker : emptyMarker) + padding + msgData.messages[i];
+                        console.log(out, color);
+                    }
+                }
+            });
+        },
+
+        channelActive(channelName)
+        {
+            var mask = this.channels[channelName];
+            return (this.channelMask & mask) != 0;
         },
     },
 
@@ -167,34 +217,18 @@ ajk.log = {
         }
     },
 
-    toggleAllChannels: function(areOn)
-    {
-        this.internal.channelMask = (areOn) ? -1 : 0;
-    },
-
-    channelActive: function(channelName)
-    {
-        var mask = this.internal.channels[channelName];
-        return (this.internal.channelMask & mask) != 0;
-    },
+    toggleAllChannels: function(areOn) { this.internal.channelMask = (areOn) ? -1 : 0; },
 
     updateLevel: function()
     {
+        // TODO - Move this to UI code
         var newValue = parseInt($('#logLevelSelect')[0].value);
-        this.logLevel = newValue;
+        this.internal.logLevel = newValue;
     },
 
     flush: function(ignoreLevel)
     {
-        for (var i = 0; i < this.internal.logQueue.length; ++i)
-        {
-            var message = this.internal.logQueue[i][0];
-            var level   = this.internal.logQueue[i][1];
-            var channel = this.internal.logQueue[i][2];
-            if (!ignoreLevel && this.logLevel < level) { continue; }
-            if (!ignoreLevel && channel != undefined && !this.channelActive(channel)) { continue; }
-            console.log('[' + channel.padStart(this.internal.channelNameLength) + ':' + level + '] ' + message);
-        }
+        this.internal.printLogsToConsole(ignoreLevel);
         this.internal.logQueue = [];
     },
 

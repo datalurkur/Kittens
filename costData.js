@@ -8,7 +8,7 @@ ajk.costDataFactory = {
     {
         log: ajk.log.addChannel('costdata', true),
 
-        buildOptionCostData: function(cache, method, basePrices, extraPrices, ratio, extraData)
+        buildOptionCostData: function(identifier, cache, method, basePrices, extraPrices, ratio, extraData)
         {
             var priceData = [];
             for (var i = 0; i < basePrices.length; ++i)
@@ -24,6 +24,7 @@ ajk.costDataFactory = {
                 dependencies: priceData,
                 ratio:        ratio,
                 extraData:    extraData,
+                identifier:   identifier,
             };
         },
 
@@ -45,7 +46,15 @@ ajk.costDataFactory = {
             {
                 this.log.detail('Data includes crafting option');
                 var cData = ajk.base.getCraft(resource);
-                data.options.push(this.buildOptionCostData(cache, 'craft', cData.prices, [], ajk.base.getCraftRatio(), null));
+                data.options.push(this.buildOptionCostData(
+                    cData.name,
+                    cache,
+                    'craft',
+                    cData.prices,
+                    [],
+                    ajk.base.getCraftRatio(),
+                    cData
+                ));
             }
 
             // Don't trade for catnip
@@ -55,7 +64,15 @@ ajk.costDataFactory = {
                 for (var i = 0; i < tradeData.length; ++i)
                 {
                     this.log.detail('Adding trade option with ' + tradeData[i].race.name);
-                    data.options.push(this.buildOptionCostData(cache, 'trade', tradeData[i].race.buys, [['gold', 15], ['manpower', 50]], tradeData[i].tradeAmount, tradeData[i].race));
+                    data.options.push(this.buildOptionCostData(
+                        tradeData[i].race.name,
+                        cache,
+                        'trade',
+                        tradeData[i].race.buys,
+                        [['gold', 15], ['manpower', 50]],
+                        tradeData[i].tradeAmount,
+                        tradeData[i].race
+                    ));
                 }
             }
 
@@ -63,7 +80,12 @@ ajk.costDataFactory = {
             return data;
         },
     },
-    buildCostData: function(cache, item) { return this.internal.buildOptionCostData(cache, 'purchase', item.model.prices, [], 1, item); },
+
+    buildCostData: function(cache, item)
+    {
+        return this.internal.buildOptionCostData(item.model.metadata.name, cache, 'purchase', item.model.prices, [], 1, item);
+    },
+
     buildCombinedCostData: function(optionA, optionB)
     {
         var deps = [];
@@ -108,6 +130,12 @@ ajk.decisionTreeFactory = {
                 consumption:        {},
                 consumptionApplied: false,
 
+                identifier: function()
+                {
+                    var syntaxAdjust = (this.optionData.method == 'trade') ? 'with ' : ' ';
+                    return this.optionData.method + syntaxAdjust + this.actionCount + ' ' + this.optionData.identifier;
+                },
+
                 applyConsumption: function(recursive)
                 {
                     if (this.consumptionApplied) { this.log.error('Applying consumption twice'); return; }
@@ -122,9 +150,22 @@ ajk.decisionTreeFactory = {
                     for (var i = 0; i < this.dependencies.length; ++i) { this.dependencies[i].rewindConsumption(recursive); }
                 },
 
-                traverse: function(func)
+                traverse: function(opCallback, resCallback, leavesFirst)
                 {
-                    for (var i = 0; i < this.dependencies.length; ++i) { this.dependencies[i].traverse(func); }
+                    if (!leavesFirst && opCallback != null)
+                    {
+                        opCallback(this);
+                        this.log.indent();
+                    }
+                    for (var i = 0; i < this.dependencies.length; ++i) { this.dependencies[i].traverse(opCallback, resCallback, leavesFirst); }
+                    if (leavesFirst && opCallback != null)
+                    {
+                        opCallback(this);
+                    }
+                    else if (opCallback != null)
+                    {
+                        this.log.unindent();
+                    }
                 },
 
                 update: function()
@@ -151,7 +192,7 @@ ajk.decisionTreeFactory = {
                         if (this.maxTime < this.dependencies[i].decisionTime)
                         {
                             this.maxTime = this.dependencies[i].decisionTime;
-                            this.bottleneck = this.dependencies[i];
+                            this.bottleneck = this.dependencies[i].bottleneck;
                         }
                     }
 
@@ -195,6 +236,7 @@ ajk.decisionTreeFactory = {
                 baseTime:           0,
                 decision:           null,
                 decisionTime:       Infinity,
+                bottleneck:         null,
 
                 // Accumulator
                 consumption:        {},
@@ -219,11 +261,9 @@ ajk.decisionTreeFactory = {
                     var leftOver = Math.max(0, adjustedAmountAvailable - amountRequired);
                     this.deficit = Math.max(0, amountRequired - adjustedAmountAvailable);
                     this.consumed = amountRequired - this.deficit;
-                    if (!this.consumption.hasOwnProperty(this.costData.resourceName))
-                    {
-                        this.consumption[this.costData.resourceName] = 0;
-                    }
-                    this.consumption[this.costData.resourceName] += this.consumed;
+                    ajk.util.ensureKeyAndModify(this.consumption, this.costData.resourceName, 0, this.consumed);
+
+                    if (recursive && this.decision != null) { this.decision.applyConsumption(recursive); }
                 },
 
                 rewindConsumption: function(recursive)
@@ -231,13 +271,15 @@ ajk.decisionTreeFactory = {
                     if (!this.consumptionApplied) { this.log.error('Rewinding consumption twice'); return; }
                     this.consumptionApplied = false;
 
+                    if (recursive && this.decision != null) { this.decision.rewindConsumption(recursive); }
+
                     this.consumption[this.costData.resourceName] -= this.consumed;
                 },
 
-                traverse: function(func)
+                traverse: function(opCallback, resCallback, leavesFirst)
                 {
-                    if (this.decision == null) { func(this); }
-                    else { this.decision.traverse(func); }
+                    if (this.decision == null && resCallback != null) { resCallback(this); }
+                    else if (this.decision != null) { this.decision.traverse(opCallback, resCallback, leavesFirst); }
                 },
 
                 update: function()
@@ -326,6 +368,11 @@ ajk.decisionTreeFactory = {
                     if (this.decision != null)
                     {
                         this.decision.applyConsumption(true);
+                        if (this.decision.bottleneck != null) { this.bottleneck = this.decision.bottleneck; }
+                    }
+                    else if (this.deficit > 0)
+                    {
+                        this.bottleneck = this;
                     }
 
                     this.log.unindent();
@@ -340,25 +387,39 @@ ajk.decisionTreeFactory = {
             this.log.unindent();
             return dTree;
         },
+
+        updateDemand: function(tree)
+        {
+            tree.demand = {};
+            tree.traverse(null, (resDecision) => {
+                if (resDecision.deficit > 0)
+                {
+                    var resName = resDecision.costData.resourceName;
+                    ajk.util.ensureKeyAndModify(tree.demand, resName, 0, resDecision.deficit);
+                }
+            });
+        },
     },
 
-    buildDecisionTree: function(cache, costData) { return this.internal.buildOptionNode(cache, costData, null); },
-
-    extractBottlenecks: function(tree)
+    buildDecisionTree: function(cache, costData)
     {
-        var unordered = [];
-        for (var resource in tree.consumption)
-        {
-            unordered.push([resource, tree.consumption[resource]]);
-        }
-        return unordered.sort(function(a, b) { return a[1] - b[1]; });
+        var dTree = this.internal.buildOptionNode(cache, costData, null);
+        dTree.update();
+        this.internal.updateDemand(dTree);
+        return dTree;
+    },
+
+    updateDecisionTree: function(dTree)
+    {
+        dTree.rewindConsumption(true);
+        dTree.update();
+        this.internal.updateDemand(dTree);
     },
 
     areInCompetition: function(cache, treeA, treeB)
     {
         var combinedCostData = ajk.costDataFactory.buildCombinedCostData(treeA.optionData, treeB.optionData);
         var combinedTree = this.buildDecisionTree(cache, combinedCostData);
-        combinedTree.update();
         return (combinedTree.maxTime > treeA.maxTime && combinedTree.maxTime > treeB.maxTime)
     },
 };
