@@ -358,6 +358,7 @@ ajk.core = {
             }
             else
             {
+                this.cache.refresh();
                 this.analysisData.eligible.forEach((itemName) => {
                     this.log.debug('Rebuilding decision tree for ' + itemName);
                     this.log.indent();

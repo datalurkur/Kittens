@@ -255,27 +255,38 @@ ajk.cache = {
             this.resourceCache = {};
             ajk.base.getAllResources().forEach((res) => {
                 this.log.detail('Caching data for resource ' + res.name);
+
                 var buffer = this.getBufferFor(res.name);
-                var bufferNeeded = buffer - res.value;
-                var available = res.value;
-                if (bufferNeeded < 0 && buffer > 0)
-                {
-                    this.log.detail('Reserving a buffer of ' + buffer + ' ' + res.name);
-                    bufferNeeded = 0;
-                    available -= buffer;
-                }
-                else if (buffer > 0)
-                {
-                    this.log.detail('Current quantity of ' + res.name + ' does not satisfy buffer requirements');
-                }
                 this.resourceCache[res.name] = {
                     unlocked:  this.resourceUnlocked(res.name),
                     perTick:   this.getNetProductionOf(res.name),
-                    buffer:    bufferNeeded,
-                    available: Math.max(0, res.value - buffer),
+                    buffer:    buffer,
                     max:       (res.maxValue == 0) ? Infinity : Math.max(0, res.maxValue - buffer),
                 };
             });
+            this.cacheResourcePoolData();
+        },
+
+        cacheResourcePoolData: function()
+        {
+            for (var resource in this.resourceCache)
+            {
+                var rData = this.resourceCache[resource];
+                var liveData = ajk.base.getResource(resource);
+
+                var available    = liveData.value;
+                var bufferNeeded = -Math.min(0, available - rData.buffer);
+
+                if (bufferNeeded > 0)
+                {
+                    this.log.detail('Reserving a buffer of ' + bufferNeeded + ' ' + resource);
+                }
+                available -= bufferNeeded;
+                available = Math.max(0, available);
+
+                rData.reserveBuffer = bufferNeeded;
+                rData.available = available;
+            }
         },
 
         cacheHuntingData: function()
@@ -423,6 +434,12 @@ ajk.cache = {
         this.internal.cacheExplorationData();
 
         this.internal.log.unindent();
+    },
+
+    refresh: function()
+    {
+        // Refresh only raw amounts and reserve buffers
+        this.internal.cacheResourcePoolData();
     },
 
     getResourceData: function(resourceName)

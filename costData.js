@@ -358,7 +358,7 @@ ajk.decisionTreeFactory = {
                     // Choose the best possible path
                     for (var i = 0; i < this.options.length; ++i)
                     {
-                        if (this.options[i].capacityBlockers.length == 0)
+                        if (this.options[i].capacityBlockers.length == 0 && this.options[i].maxTime < this.decisionTime)
                         {
                             this.decision     = this.options[i];
                             this.decisionTime = this.options[i].maxTime;
