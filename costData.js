@@ -79,11 +79,27 @@ ajk.costDataFactory = {
             this.log.unindent();
             return data;
         },
+
+        buildBlockingCostData: function()
+        {
+            return {
+                method:       'blocked',
+                dependencies: [],
+                ratio:        1,
+                extraData:    null,
+                identifier:   'blocked',
+            };
+        },
     },
 
     buildCostData: function(cache, item)
     {
         return this.internal.buildOptionCostData(item.model.metadata.name, cache, 'purchase', item.model.prices, [], 1, item);
+    },
+
+    buildCustomCostData: function(cache, method, identifier, productionCosts, data)
+    {
+        return this.internal.buildOptionCostData(identifier, cache, method, productionCosts, [], 1, data);
     },
 
     buildCombinedCostData: function(optionA, optionB)
@@ -97,7 +113,7 @@ ajk.costDataFactory = {
             ratio:        1,
             extraData:    null,
         };
-    }
+    },
 };
 
 ajk.decisionTreeFactory = {

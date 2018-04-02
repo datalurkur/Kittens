@@ -29,7 +29,9 @@ ajk.core = {
         // Operating variables
         tickThread:   null,
 
-        successes:    -1, // Ensure the cache gets built on the first tick
+        year:        -1,
+        season:      -1,
+        successes:    0,
         cache:        ajk.cache,
         itemData:     {},
         analysisData: null,
@@ -83,6 +85,7 @@ ajk.core = {
             }
             ajk.base.switchToTab(null);
 
+
             for (var i = 0; i < pItems.length; ++i)
             {
                 var mData = pItems[i].model.metadata;
@@ -93,6 +96,68 @@ ajk.core = {
                     costData:     null,
                     decisionTree: null,
                 };
+            }
+        },
+
+        rebuildExplorationData: function()
+        {
+            var dipTab = ajk.base.diplomacyTab();
+            if (!dipTab.visible) { return; }
+
+            // Add exploration item
+            // TODO - Exploration data format is *highly* coupled with what the cache returns
+            //        It feels like a super special case, which is why I'm not jumping up to fix this
+            //        But MAN is it oogly
+            var explorationData = this.cache.getExplorationData();
+            if (explorationData == null)
+            {
+                // No exploration options available
+                this.log.detail('No race discovery actions available');
+            }
+            else
+            {
+                var productionCosts    = [];
+                var purchasePriorities = [];
+
+                productionCosts.push({
+                    name: 'manpower',
+                    val:  1000,
+                });
+
+                for (var costType in explorationData)
+                {
+                    var costData = explorationData[costType];
+                    if (costType == 'purchase')
+                    {
+                        purchasePriorities.push(costData);
+                    }
+                    else if (costType == 'accumulate')
+                    {
+                        productionCosts.push({
+                            name: costData[0],
+                            val:  costData[1],
+                        });
+                    }
+                    else if (costType == 'storage')
+                    {
+                        storagePriorities.push(costData);
+                    }
+                }
+
+                // God, this whole exploration thing is just such a mess
+                ajk.base.switchToTab(dipTab);
+                var exploreItem = dipTab.exploreBtn;
+                ajk.base.switchToTab(null);
+
+                var costData = ajk.costDataFactory.buildCustomCostData(this.cache, 'explore', 'trade route', productionCosts, exploreItem);
+
+                this.itemData['tradeRouteDiscovery'] = {
+                    item:         exploreItem,
+                    costData:     costData,
+                    decisionTree: null,
+                };
+
+                // TODO - Pipe purchase priorites to analysis
             }
         },
 
@@ -125,6 +190,11 @@ ajk.core = {
 
             this.rebuildCostData();
             timerData.interval('Rebuild Cost Data');
+
+            // Custom cost data section
+            this.rebuildExplorationData();
+            timerData.interval('Rebuild Exploration Data');
+            // No more custom cost data
 
             this.analysisData = ajk.analysisModule.prepare(this.itemData);
             timerData.interval('Analysis Preparation');
@@ -164,37 +234,34 @@ ajk.core = {
                 var tree = this.itemData[itemName].decisionTree;
                 tree.traverse((opDecision) => {
                     this.log.debug(opDecision.identifier());
-                    if (opDecision.optionData.method == 'craft')
+                    var method = opDecision.optionData.method;
+                    if (method == 'craft')
                     {
                         ajk.base.craft(opDecision.optionData.extraData.name, opDecision.actionCount);
                     }
-                    else if (opDecision.optionData.method == 'trade')
+                    else if (method == 'trade')
                     {
                         ajk.base.trade(opDecision.optionData.extraData, opDecision.actionCount);
                     }
-                    else if (opDecision.optionData.method == 'purchase')
+                    else if (method == 'purchase' || method == 'explore')
                     {
                         if (opDecision.maxTime == 0)
                         {
-                            this.log.detail('Ready for purchase');
+                            this.log.detail('Ready to ' + method);
                             if (!ajk.base.purchaseItem(opDecision.optionData.extraData))
                             {
-                                this.log.warn('Failed to purchase');
+                                this.log.warn('Failed to ' + method);
                             }
                             else
                             {
-                                this.log.info('Purchased ' + opDecision.optionData.identifier);
+                                this.log.info(method + 'd ' + opDecision.optionData.identifier);
                                 this.successes += 1;
                             }
                         }
                         else
                         {
-                            this.log.detail('Waiting on resources for purchase');
+                            this.log.detail('Waiting on resources to ' + method);
                         }
-                    }
-                    else if (opDecision.optionData.method == 'explore')
-                    {
-                        // TODO
                     }
                 }, null, true);
 
@@ -264,15 +331,27 @@ ajk.core = {
             ajk.ui.refreshPriorities(this.itemData, this.analysisData);
         },
 
+        cacheNeedsUpdate: function()
+        {
+            return (this.successes > 0 ||
+                    ajk.base.getYear() != this.year ||
+                    ajk.base.getSeason() != this.season);
+        },
+
         unsafeTick: function()
         {
             var timerData = ajk.timer.start('Tick Execution');
+
+            var doRebuild = this.cacheNeedsUpdate();
+            this.year = ajk.base.getYear();
+            this.season = ajk.base.getSeason();
+            this.succeses = 0;
 
             this.checkForObservationEvent();
             timerData.interval('Event Observation');
 
             // If we didn't build anything previously, we don't need to recompute priorities and such
-            if (this.successes != 0)
+            if (doRebuild)
             {
                 this.rebuildAndPrioritize();
                 timerData.interval('Rebuild and Prioritize');
@@ -354,6 +433,7 @@ ajk.core = {
         }
 
         // Yeah yeah, singletons are gross, get over it
+        ajk.config.ticking = doTick;
         ajk.ui.refresh();
     }
 };

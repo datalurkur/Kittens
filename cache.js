@@ -172,10 +172,11 @@ ajk.cache = {
             return amount * (chance / 100) * seasonModifier;
         },
 
+        // Null means do nothing
+        // Empty array means no costs - race discovery is ready
+        // Populated array means there are blockers
         getExplorationRequirementsFor(race)
         {
-            // There's a bug here where if we don't build anything for a while, we could wait longer than necessary to explore for lizards, griffins, sharks, and nagas.
-            // Do we care? Naaaaah.
             if (race.name == 'lizards' || race.name == 'griffins' || race.name == 'sharks')
             {
                 var available = (
@@ -183,50 +184,51 @@ ajk.cache = {
                     (ajk.base.getResource('karma').value > 0  && ajk.base.getYear() >=  5) ||
                     (                                            ajk.base.getYear() >= 20)
                 );
-                return available ? null : {};
+                return available ? [] : null;
             }
             else if (race.name == 'nagas')
             {
                 var culture = ajk.base.getResource('culture');
                 if (culture.maxValue < 1500)
                 {
-                    return {'storage': 'culture'};
+                    return ['storage', 'culture'];
                 }
                 else if (culture.value < 1500)
                 {
-                    return {'production': 'culture'};
+                    return ['accumulate', ['culture', 1500]];
                 }
                 else
                 {
-                    return null;
+                    return [];
                 }
             }
             else if (race.name == 'zebras')
             {
-                return (ajk.base.getResource('ship').value == 0) ? {'purchase': 'tradeShip_custom'} : null;
+                return (ajk.base.getResource('ship').value == 0) ? ['accumulate', ['ship', 1]] : [];
             }
             else if (race.name == 'spiders')
             {
-                if (ajk.base.getResource('ship').value < 100)
+                var shipDeficit = ajk.base.getResource('ship').value - 100;
+                if (shipDeficit > 0)
                 {
-                    return {'purchase': 'tradeShip_custom'};
+                    return ['accumulate', ['ship', shipDeficit]];
                 }
                 else if (ajk.base.getResource('science').maxValue < 125000)
                 {
-                    return {'storage' : 'science'};
+                    return ['storage', 'science'];
                 }
                 else
                 {
-                    return null;
+                    return [];
                 }
             }
             else if (race.name == 'dragons')
             {
-                return (ajk.base.getScience('nuclearFission').researched) ? null : {'purchase': 'nuclearFission'};
+                return (ajk.base.getScience('nuclearFission').researched) ? [] : ['purchase', 'nuclearFission'];
             }
             else if (race.name == 'leviathans')
             {
-                return (ajk.base.getZigguratUpgrade('blackPyramid').val == 0) ? {'construct': 'blackPyramid'} : {};
+                return (ajk.base.getZigguratUpgrade('blackPyramid').val > 0) ? null : ['purchase', 'blackPyramid'];
             }
         },
 
@@ -391,6 +393,7 @@ ajk.cache = {
                 if (this.explorationOrder[raceName] < earliestRace)
                 {
                     this.tradeCache.nextExplorationTarget = raceName;
+                    earliestRace = this.explorationOrder[raceName];
                 }
             }
         },
@@ -455,5 +458,11 @@ ajk.cache = {
     getResourceCostForCraft: function(resourceName, craftName)
     {
         return this.internal.craftCache.costToCrafts[resourceName][craftName];
+    },
+
+    getExplorationData: function()
+    {
+        if (this.internal.tradeCache.nextExplorationTarget == null) { return {}; }
+        return this.internal.tradeCache.exploration[this.internal.tradeCache.nextExplorationTarget];
     },
 };

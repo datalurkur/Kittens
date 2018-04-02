@@ -106,7 +106,7 @@ ajk.ui = {
 
         var tickToggle = $('#tickToggle');
         tickToggle.click(function() { ajk.core.shouldTick(this.checked); });
-        tickToggle.attr('checked', ajk.config.startOnLoad);
+        tickToggle.attr('checked', ajk.config.ticking);
 
         var logLevelSelect = $('#logLevelSelect');
         logLevelSelect.change(function() { ajk.log.internal.logLevel = this.value; });
@@ -131,7 +131,7 @@ ajk.ui = {
     refresh: function()
     {
         $('#simulateToggle').attr('checked', ajk.base.simulating);
-        $('#tickToggle').attr('checked', ajk.config.startOnLoad);
+        $('#tickToggle').attr('checked', ajk.config.ticking);
         $('#logLevelSelect').attr('value', ajk.log.internal.logLevel);
         $('#detailSuccessToggle').attr('checked', ajk.config.detailedLogsOnSuccess);
         $('#detailErrorToggle').attr('checked', ajk.config.detailedLogsOnError);

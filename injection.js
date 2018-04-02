@@ -4,7 +4,6 @@ const scripts = [
     'base.js',
     'backup.js',
     'cache.js',
-    'customItems.js',
     'costData.js',
     'jobs.js',
     'analysis.js',

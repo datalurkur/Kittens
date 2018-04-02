@@ -8,7 +8,6 @@
         "backup.js",
         "timer.js",
         "cache.js",
-        "customItems.js",
         "costData.js",
         "jobs.js",
         "analysis.js",

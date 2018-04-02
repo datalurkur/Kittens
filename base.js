@@ -11,6 +11,7 @@ var ajk = {
         bonfireTab:         function()            { return gamePage.tabs[0];                                             },
         scienceTab:         function()            { return gamePage.tabs[2];                                             },
         workshopTab:        function()            { return gamePage.tabs[3];                                             },
+        diplomacyTab:       function()            { return gamePage.tabs[4];                                             },
         religionTab:        function()            { return gamePage.tabs[5];                                             },
         spaceTab:           function()            { return gamePage.tabs[6];                                             },
 
@@ -27,7 +28,6 @@ var ajk = {
         getHunterRatio:     function()            { return gamePage.getEffect('hunterRatio') + 1;                        },
 
         // Trade stuff
-        getExploreItem:     function()            { return gamePage.diplomacy.exploreBtn;                                },
         getAllRaces:        function()            { return gamePage.diplomacy.races;                                     },
         getRace:            function(raceName)    { return gamePage.diplomacy.getRace(raceName);                         },
         getTradeRatio:      function()            { return gamePage.diplomacy.getTradeRatio() + 1;                       },
@@ -132,7 +132,7 @@ ajk.config = {
     performBackup:         false,
     detailedLogsOnError:   true,
     detailedLogsOnSuccess: false,
-    startOnLoad:           false,
+    ticking:               false,
 };
 
 ajk.util = {

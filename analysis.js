@@ -36,7 +36,7 @@ ajk.analysisModule = {
     prioritize: function(data)
     {
         data.priorityOrder = data.eligible;
-        data.priorityOrder = data.priorityOrder.sort(function(a, b) { return data.weights[b] - data.weights[a]; });
+        data.priorityOrder = data.priorityOrder.sort((a, b) => { return data.weights[b].weight - data.weights[a].weight; });
     },
     postprocess: function(data, cache, itemMap)
     {
@@ -124,6 +124,7 @@ ajk.analysisModule.addPreprocessor(function(data, cache, itemMap, log) {
     data.eligible.forEach((itemName) => { data.addModifier(itemName, ajk.processors.config.oneShotWeightBonus, 'one-shot'); });
 });
 
+// Time cost
 ajk.analysisModule.addPreprocessor(function(data, cache, itemMap, log) {
     var params = {
         max:        1,
@@ -176,7 +177,7 @@ ajk.analysisModule.addPreprocessor(function(data, cache, itemMap, log) {
         {
             // Scale linearly
             log.detail('Scaling linearly');
-            modifier = params.min + (costTime * params.slope);
+            modifier = params.max + (costTime * params.slope);
         }
         else
         {
