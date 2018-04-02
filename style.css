@@ -1,0 +1,79 @@
+.accordion {
+    border: none;
+    outline: none;
+
+    color: white;
+    background: none;
+
+    text-transform: capitalize;
+    text-align: left;
+    font-weight: bold;
+    font-size: 20px;
+    font-family: 'Times New Roman', Times, serif;
+
+    padding-top: 10px;
+}
+
+.inlineAccordion {
+    border: none;
+    outline: none;
+
+    color: white;
+    background: none;
+
+    text-align: left;
+    font-family: 'Times New Roman', Times, serif;
+    font-size: 14px;
+
+    padding: 0px;
+    margin: 0px;
+    width: 100%;
+}
+
+.accordion:hover {
+    color: red;
+}
+
+.inlineAccordion:hover {
+    background-color: rgb(64, 64, 64);
+}
+
+.accordionPanel {
+    padding-left: 5px;
+    font-size: 14px;
+}
+
+.ajkTable {
+    font-family: 'Times New Roman', Times, serif;
+    font-size: 14px;
+    width: 100%;
+    border-spacing: 0px;
+}
+
+.ajkTable tbody tr td.rightAlignedColumn {
+    text-align: right;
+}
+
+.ajkTable tbody tr:nth-child(odd) td {
+    background: rgb(16, 16, 16);
+}
+
+span.ajkAdjustment {
+    margin-left: 5px;
+    margin-right: 5px;
+    width: 50px;
+    float: left;
+    text-align: right;
+}
+
+span.ajkDisabled {
+    color: rgb(64, 64, 64);
+}
+
+span.ajkAdjustment.positive {
+    color: rgb(64, 256, 64);
+}
+
+span.ajkAdjustment.negative {
+    color: rgb(256, 64, 64);
+}

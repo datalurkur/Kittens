@@ -98,8 +98,7 @@ ajk.core = {
 
         rebuildCache: function()
         {
-            var resources = ajk.base.getAllResources();
-            this.cache.rebuild(resources, this.itemData);
+            this.cache.rebuild(this.itemData);
         },
 
         rebuildCostData: function()
@@ -151,6 +150,8 @@ ajk.core = {
             ajk.analysisModule.prioritize(this.analysisData);
             timerData.end('Prioritization step 2');
         },
+
+        inDemand: function(resourceName) { return this.priorityResourceDemand.hasOwnProperty(resourceName) && this.priorityResourceDemand[resourceName] > 0; },
 
         pursuePriority: function()
         {
@@ -209,143 +210,59 @@ ajk.core = {
         convertResources: function()
         {
             this.log.debug('Converting resources');
-        },
 
-        /*
-        operateOnPriority: function()
-        {
-            if (ajk.analysis.shouldExplore)
-            {
-                ajk.ui.switchToTab('Trade');
-                var explore = ajk.base.getExploreItem();
-                if (explore.controller.hasResources(explore.model))
-                {
-                    this.log.debug('Attempting to discover new race');
-                    if (!ajk.simulate)
-                    {
-                        explore.controller.buyItem(explore.model, {}, function(result) {
-                            var ajkI = ajk.core.internal;
-                            if (result)
-                            {
-                                ajkI.log.info('Unlocked new race');
-                                // This is sort of a hack, but fuck if I know why this gets called twice on success with both true and false
-                                ajkI.explorationSuccess = true;
-                            }
-                            else if (!ajkI.explorationSuccess)
-                            {
-                                ajkI.log.error('Failed to unlock new race');
-                                ajkI.explorationSuccess = false;
-                            }
-                        });
-                    }
-                }
-                else
-                {
-                    this.log.debug('Waiting on catpower for exploration');
-                }
-                ajk.ui.switchToTab(null);
-            }
-
-            for (var i = 0; i < ajk.analysis.filteredPriorityList.length; ++i)
-            {
-                var priority = ajk.analysis.filteredPriorityList[i];
-                this.log.debug('Attempting to act on ' + priority + ' (weight ' + ajk.analysis.data[priority].weight + ')');
-
-                // TODO - Fix this
-                var costData = ajk.analysis.data[priority].costData;
-                if (this.operateOnCostData(costData))
-                {
-                    this.log.detail('Cost operations succeeded, acting');
-                    var itemData = ajk.analysis.data[priority];
-
-                    // Make sure the model is up-to-date (that way if we purchased something this tick already, we don't try to purchase something else we no longer have resources for)
-                    itemData.item.update();
-                    if (itemData.item.controller.hasResources(itemData.item.model))
-                    {
-                        this.successes += 1;
-                        if (!ajk.simulate)
-                        {
-                            itemData.item.controller.buyItem(itemData.item.model, {}, function(result) {
-                                if (result)
-                                {
-                                    ajk.core.internal.log.info('Purchased ' + priority);
-                                    ajk.cache.dirty();
-                                }
-                                else
-                                {
-                                    ajk.core.internal.log.error('Failed to purchase ' + priority);
-                                }
-                            });
-                        }
-                    }
-                    else if (!ajk.simulate)
-                    {
-                        this.log.error('Item has insufficient resources, even after operating on costs successfully');
-                    }
-                }
-            }
-        },*/
-
-        /*
-        convertResources: function()
-        {
             for (var rName in this.resourceConversions)
             {
-                var resource = ajk.base.getResource(rName);
-                var conversion = ajk.base.getResource(this.resourceConversions[rName]);
-                if (!resource.unlocked || !conversion.unlocked) { continue; }
-                if (resource.value / resource.maxValue >= this.conversionMaxRatio)
+                var rData = this.cache.getResourceData(rName);
+                if (!rData.available) { continue; }
+
+                if (rData.amount / rData.max >= this.conversionMaxRatio)
                 {
-                    var amountToConvert = resource.maxValue * this.conversionRatio;
-                    var craft = ajk.base.getCraft(conversion.name);
-                    var craftCost = Infinity;
-                    for (var i = 0; i < craft.prices.length; ++i)
-                    {
-                        if (craft.prices[i].name == resource.name)
-                        {
-                            craftCost = craft.prices[i].val;
-                            break;
-                        }
-                    }
-                    var numCrafts = Math.ceil(amountToConvert / craftCost);
+                    var amountToConvert =  rData.max * this.conversionRatio;
+                    var craftPrice = this.cache.getResourceCostForCraft(rName, this.resourceConversions[rName]);
+                    var numCrafts = Math.ceil(amountToConvert / craftPrice);
                     this.log.debug('Converting ' + amountToConvert + ' ' + rName + 's into ' + craft.name);
                     if (!ajk.base.craft(craft.name, numCrafts))
                     {
-                        this.log.error('Conversion failed');
+                        this.log.error('Resource conversion failed');
                     }
                 }
             }
 
-            var catPower = ajk.base.getResource('manpower');
-            // TODO - Fix this
-            if (catPower.unlocked && catPower.value / catPower.maxValue >= this.conversionMaxRatio && !this.inDemand('manpower'))
+            var catPower = this.cache.getResourceData('manpower');
+            if (catPower.available && catPower.amount / catPower.max >= this.conversionMaxRatio && !this.inDemand('manpower'))
             {
-                var numHunts = Math.ceil(catPower.maxValue * this.catpowerConversionRatio / 100);
+                var numHunts = Math.ceil(catPower.max * this.catpowerConversionRatio / 100);
                 this.log.debug('Sending hunters ' + numHunts + ' times');
                 ajk.base.hunt(numHunts);
             }
 
-            var faith = ajk.base.getResource('faith');
-            if (faith.unlocked && faith.value == faith.maxValue)
+            var faith = this.cache.getResourceData('faith');
+            if (faith.available && faith.amount == faith.max && !this.inDemand('faith'))
             {
                 this.log.debug('Praising the sun');
                 ajk.base.praise();
             }
 
-            if (!ajk.simulate)
+            // We don't particularly care if these fail or not, for now...
+            this.log.debug('Crafting all parchment');
+            ajk.base.craftAll('parchment');
+            if (!this.inDemand('parchment') && !this.inDemand('culture'))
             {
-                ajk.base.craft('parchment');
+                this.log.debug('Crafting all manuscripts');
+                ajk.base.craftAll('manuscript');
             }
-            if (!ajk.simulate && !this.inDemand('parchment') && !this.inDemand('culture'))
+            if (!this.inDemand('manuscript') && !this.inDemand('science'))
             {
-                ajk.base.craft('manuscript');
-            }
-            if (!ajk.simulate && this.inDemand('manuscript') && !this.inDemand('science'))
-            {
-                ajk.base.craft('compedium');
+                this.log.debug('Crafting all compendiums');
+                ajk.base.craftAll('compedium');
             }
         },
-        */
+
+        refreshUI: function()
+        {
+            ajk.ui.refreshPriorities(this.itemData, this.analysisData);
+        },
 
         unsafeTick: function()
         {
@@ -384,7 +301,7 @@ ajk.core = {
             //ajk.jobs.assignFreeKittens();
             timerData.interval('Job Assignment');
 
-            //this.refreshUI();
+            this.refreshUI();
             timerData.end('UI Refresh');
         },
 
@@ -400,18 +317,17 @@ ajk.core = {
             {
                 this.log.error('Error encountered during tick\n' + e.stack);
             }
-            // TODO - Move this option into a config
-            this.log.flush(this.successes > 0 && ajk.log.detailedLogsOnSuccess);
+            this.log.flush(this.successes > 0 && ajk.config.detailedLogsOnSuccess);
         },
     },
 
     simulateTick: function()
     {
         this.internal.log.info('Simulating tick');
-        var pSimulate = ajk.simulate;
-        ajk.simulate = true;
+        var pSimulate = ajk.base.simulate;
+        ajk.base.simulate = true;
         this.internal.tick();
-        ajk.simulate = pSimulate;
+        ajk.base.simulate = pSimulate;
     },
 
     shouldTick: function(doTick)
@@ -437,7 +353,7 @@ ajk.core = {
             this.internal.tickThread = setInterval(function() { ajk.core.internal.tick(); }, this.internal.tickFrequency * 1000);
         }
 
-        // TODO - Move this into a UI call
-        //$('#tickToggle')[0].checked = doTick;
+        // Yeah yeah, singletons are gross, get over it
+        ajk.ui.refresh();
     }
 };

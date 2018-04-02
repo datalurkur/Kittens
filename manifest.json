@@ -12,8 +12,11 @@
         "costData.js",
         "jobs.js",
         "analysis.js",
+        "ui.js",
         "core.js",
-        "ui.js"
+        "style.css",
+        "sidebar.html",
+        "backupWidget.html"
     ],
     "content_scripts":
     [

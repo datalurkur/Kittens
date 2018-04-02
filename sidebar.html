@@ -1,0 +1,41 @@
+<button class="accordion">Script Control</button>
+<div class="accordionPanel">
+    <input type="button" id="simulateButton" value="Simulate One Tick" style="width: 200px;" />
+    <br/>
+    <input id="simulateToggle" type="checkbox" />
+    <label for="simulateToggle">Simulating</label>
+    <br/>
+    <input id="tickToggle" type="checkbox" />
+    <label for="tickToggle">Ticking</label>
+    <br/>
+    <label for="logLevelSelect">Log Level</label>
+    <select id="logLevelSelect">
+        <option value="0">Errors Only</option>
+        <option value="1">Errors and Warnings</option>
+        <option value="2">Info</option>
+        <option value="3">Debug</option>
+        <option value="4">Detail</option>
+        <option value="5">Trace</option>
+    </select>
+    <br/>
+    <button class="inlineAccordion">Log Channels</button>
+    <div class="accordionPanel" style="display: none;">
+        <input type="button" id="enableAllChannelsButton"  value="Enable" style="width: 100px;" />
+        <input type="button" id="disableAllChannelsButton" value="Disable" style="width: 100px;" />
+        <div id="logChannelContainer"></div>
+    </div>
+    <br/>
+    <input id="detailSuccessToggle" type="checkbox" />
+    <label for="detailSuccessToggle">Detailed Output On Success</label>
+    <br/>
+    <input id="detailErrorToggle" type="checkbox" />
+    <label for="detailErrorToggle">Detailed Output On Errors</label>
+    <br/>
+</div>
+<br/>
+<button class="accordion">Current Priorities</button>
+<div class="accordionPanel">
+    <table class="ajkTable">
+        <tbody id="priorityTable"></tbody>
+    </table>
+</div>

@@ -6,7 +6,7 @@
 ajk.costDataFactory = {
     internal:
     {
-        log: ajk.log.addChannel('costdata', true),
+        log: ajk.log.addChannel('costdata', false),
 
         buildOptionCostData: function(identifier, cache, method, basePrices, extraPrices, ratio, extraData)
         {
@@ -103,7 +103,7 @@ ajk.costDataFactory = {
 ajk.decisionTreeFactory = {
     internal:
     {
-        log: ajk.log.addChannel('dtree', true),
+        log: ajk.log.addChannel('dtree', false),
         buildOptionNode: function(cache, option, parentResourceNode)
         {
             this.log.detail('Building decision tree for option: ' + option.method);

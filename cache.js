@@ -6,7 +6,7 @@ ajk.cache = {
         log: ajk.log.addChannel('cache', true),
 
         // Definitions and constants
-        effectTypes:
+        effectTypeData:
         [
             {
                 type: 'production',
@@ -64,6 +64,12 @@ ajk.cache = {
         effectCache:   {},
         resourceCache: {},
 
+        craftCache:
+        {
+            costToCrafts: {},
+            craftToCost:  {},
+        },
+
         huntingCache:
         {
             allowHunting:    false,
@@ -85,12 +91,11 @@ ajk.cache = {
 
             var baseResource = ajk.base.getResource(resourceName);
             if (baseResource.unlocked) { return true; }
-            if (baseResource.craftable)
+            if (this.craftCache.craftToCosts.hasOwnProperty(baseResource))
             {
-                var craft = ajk.base.getCraft(resourceName);
-                for (var i = 0; i < craft.prices.length; ++i)
+                for (var resource in this.craftCache.craftToCosts[baseResource])
                 {
-                    if (!this.resourceUnlocked(craft.prices[i].name)) { return false; }
+                    if (!this.resourceUnlocked(resource)) { return false;}
                 }
                 return true;
             }
@@ -120,10 +125,11 @@ ajk.cache = {
 
         matchEffect: function(item, effect, effectQuantity, typeIndex)
         {
-            var table = this.effectCache[this.effectTypes[typeIndex].type];
-            for (var i = 0; i < this.effectTypes[typeIndex].postfixes.length; ++i)
+            var typeData = this.effectTypeData[typeIndex];
+            var table = this.effectCache[typeData.type];
+            for (var i = 0; i < typeData.postfixes.length; ++i)
             {
-                var index = effect.indexOf(this.effectTypes[typeIndex].postfixes[i]);
+                var index = effect.indexOf(typeData.postfixes[i]);
                 if (index != -1)
                 {
                     var resource = effect.substring(0, index);
@@ -141,37 +147,6 @@ ajk.cache = {
                 }
             }
             return false;
-        },
-
-        cacheEffectsFor: function(itemMap)
-        {
-            this.log.debug('Caching effects');
-            this.log.indent();
-
-            for (var itemName in itemMap)
-            {
-                this.log.trace('Caching effects for ' + itemName);
-                var itemData = itemMap[itemName].item.model.metadata;
-                var effects = itemData.effects;
-                if (itemData.hasOwnProperty('stage'))
-                {
-                    effects = itemData.stages[itemData.stage].effects;
-                }
-                for (var effectName in effects)
-                {
-                    if (effects[effectName] == 0)
-                    {
-                        this.log.detail('Ignoring effect ' + effectName + ' with zero-value for ' + itemData.name);
-                        continue;
-                    }
-                    for (var j = 0; j < this.effectTypes.length; ++j)
-                    {
-                        if (this.matchEffect(itemData.name, effectName, effects[effectName], j)) { break; }
-                    }
-                }
-            }
-
-            this.log.unindent();
         },
 
         getTradeAmountFor: function(race, saleData)
@@ -255,6 +230,80 @@ ajk.cache = {
             }
         },
 
+        cacheCraftData: function()
+        {
+            this.craftCache.costToCrafts   = {};
+            this.craftCache.craftToCosts   = {};
+
+            ajk.base.getAllCrafts().forEach((craft) => {
+                if (craft.unlocked)
+                {
+                    this.log.detail('Caching data for craft ' + craft.name);
+                    this.craftCache.craftToCosts[craft.name] = {};
+                    craft.prices.forEach((price) => {
+                        this.craftCache.craftToCosts[craft.name][price.name] = price.val;
+                        ajk.util.ensureKey(this.craftCache.costToCrafts, price.name, {})[craft.name] = price.val;
+                    });
+                }
+            });
+        },
+
+        cacheResourceData: function()
+        {
+            this.resourceCache = {};
+            ajk.base.getAllResources().forEach((res) => {
+                this.log.detail('Caching data for resource ' + res.name);
+                var buffer = this.getBufferFor(res.name);
+                var bufferNeeded = buffer - res.value;
+                var available = res.value;
+                if (bufferNeeded < 0 && buffer > 0)
+                {
+                    this.log.detail('Reserving a buffer of ' + buffer + ' ' + res.name);
+                    bufferNeeded = 0;
+                    available -= buffer;
+                }
+                else if (buffer > 0)
+                {
+                    this.log.detail('Current quantity of ' + res.name + ' does not satisfy buffer requirements');
+                }
+                this.resourceCache[res.name] = {
+                    unlocked:  this.resourceUnlocked(res.name),
+                    perTick:   this.getNetProductionOf(res.name),
+                    buffer:    bufferNeeded,
+                    available: Math.max(0, res.value - buffer),
+                    max:       (res.maxValue == 0) ? Infinity : Math.max(0, res.maxValue - buffer),
+                };
+            });
+        },
+
+        cacheHuntingData: function()
+        {
+            this.log.detail('Caching hunting data and expected spoils');
+            // TODO - Solve the problem of other catpower consumers interfering with this metric
+            this.huntingCache.allowHunting = ajk.base.getJob('hunter').unlocked;
+            this.huntingCache.expectedPerTick = {};
+            var avgHuntsPerTick = this.resourceCache['manpower'].perTick / 100;
+            var hunterRatio = ajk.base.getHunterRatio();
+
+            var expectedFursPerHunt = 39.5 + ((65 * (hunterRatio - 1)) / 2);
+            this.huntingCache.expectedPerTick['furs'] = expectedFursPerHunt * avgHuntsPerTick;
+
+            var ivoryChance = (44 + (2 * hunterRatio)) / 100;
+            var ivoryAmount = 24.5 + ((40 * (hunterRatio - 1)) / 2);
+            this.huntingCache.expectedPerTick['ivory'] = ivoryChance * ivoryAmount * avgHuntsPerTick;
+
+            this.huntingCache.avgHuntsPerTick = avgHuntsPerTick;
+
+            // Update per-tick data based on the hunting cache
+            if (this.huntingCache.allowHunting)
+            {
+                for (var resource in this.huntingCache.expectedPerTick)
+                {
+                    this.resourceCache[resource].perTick += this.huntingCache.expectedPerTick[resource];
+                }
+            }
+        },
+
         cacheTradeData: function()
         {
             this.tradeCache = {
@@ -265,42 +314,76 @@ ajk.cache = {
             };
 
             var allRaces = ajk.base.getAllRaces();
-            for (var i = 0; i < allRaces.length; ++i)
-            {
-                var race = allRaces[i];
-                if (!race.unlocked) { continue; }
-
-                this.log.detail('Adding trade amounts for ' + race.name);
-                var saleData = {};
-                for (var j = 0; j < race.sells.length; ++j)
+            ajk.base.getAllRaces().forEach((race) => {
+                if (race.unlocked)
                 {
-                    var resourceName = race.sells[j].name;
-                    var tradeAmount = this.getTradeAmountFor(race, race.sells[j]);
-                    saleData[resourceName] = tradeAmount;
-                    ajk.util.ensureKey(this.tradeCache.resources, resourceName, []).push({
-                        race: race,
-                        tradeAmount: tradeAmount
+                    this.log.detail('Adding trade amounts for ' + race.name);
+                    var saleData = {};
+                    race.sells.forEach((price) => {
+                        var tradeAmount = this.getTradeAmountFor(race, price);
+                        saleData[price.name] = tradeAmount;
+                        ajk.util.ensureKey(this.tradeCache.resources, price.name, []).push({
+                            race: race,
+                            tradeAmount: tradeAmount
+                        });
                     });
+                    this.tradeCache.traders[race.name] = {
+                        sells: saleData,
+                        race:  race,
+                    };
                 }
-                this.tradeCache.traders[race.name] = {
-                    sells: saleData,
-                    race:  race,
+            });
+        },
+
+        cacheEffects: function(itemMap)
+        {
+            this.log.debug('Caching effects');
+            this.log.indent();
+
+            this.effectCache = {};
+            this.effectTypeData.forEach((typeData) => {
+                this.effectCache[typeData.type] = {
+                    effectToResource:   {},
+                    resourceToItems:    {},
+                    itemToResourceData: {},
                 };
+            });
+
+            for (var itemName in itemMap)
+            {
+                this.log.trace('Caching effects for ' + itemName);
+                var itemData = itemMap[itemName].item.model.metadata;
+                var effects = itemData.effects;
+                if (itemData.hasOwnProperty('stage'))
+                {
+                    effects = itemData.stages[itemData.stage].effects;
+                }
+                for (var effectName in effects)
+                {
+                    if (effects[effectName] == 0)
+                    {
+                        this.log.detail('Ignoring effect ' + effectName + ' with zero-value for ' + itemData.name);
+                        continue;
+                    }
+                    for (var j = 0; j < this.effectTypeData.length; ++j)
+                    {
+                        if (this.matchEffect(itemData.name, effectName, effects[effectName], j)) { break; }
+                    }
+                }
             }
+
+            this.log.unindent();
         },
 
         cacheExplorationData: function()
         {
-            var allRaces = ajk.base.getAllRaces();
-            for (var i = 0; i < allRaces.length; ++i)
-            {
-                var race = allRaces[i];
+            ajk.base.getAllRaces().forEach((race) => {
                 if (!race.unlocked)
                 {
                     this.log.detail('Adding exploration requirements for ' + race.name);
                     this.tradeCache.exploration[race.name] = this.getExplorationRequirementsFor(race);
                 }
-            }
+            });
 
             var earliestRace = Infinity;
             for (var raceName in this.tradeCache.exploration)
@@ -313,7 +396,7 @@ ajk.cache = {
         },
     },
 
-    rebuild: function(resources, itemMap)
+    rebuild: function(itemMap)
     {
         this.internal.log.debug('Rebuilding cache');
         this.internal.log.indent();
@@ -321,78 +404,27 @@ ajk.cache = {
         // Cache trade data
         this.internal.cacheTradeData();
 
+        // Rebuild craft cache
+        this.internal.cacheCraftData();
+
         // Rebuild resource cache
-        this.internal.resourceCache = {};
-        for (var i = 0; i < resources.length; ++i)
-        {
-            var res = resources[i];
-            this.internal.log.detail('Caching data for resource ' + res.name);
-            var buffer = this.internal.getBufferFor(res.name);
-            var bufferNeeded = buffer - res.value;
-            var available = res.value;
-            if (bufferNeeded < 0 && buffer > 0)
-            {
-                this.internal.log.detail('Reserving a buffer of ' + buffer + ' ' + res.name);
-                bufferNeeded = 0;
-                available -= buffer;
-            }
-            else if (buffer > 0)
-            {
-                this.internal.log.detail('Current quantity of ' + res.name + ' does not satisfy buffer requirements');
-            }
-            this.internal.resourceCache[res.name] = {
-                unlocked:  this.internal.resourceUnlocked(res.name),
-                perTick:   this.internal.getNetProductionOf(res.name),
-                buffer:    bufferNeeded,
-                available: Math.max(0, res.value - buffer),
-                max:       (res.maxValue == 0) ? Infinity : Math.max(0, res.maxValue - buffer),
-            };
-        }
+        this.internal.cacheResourceData();
 
         // Rebuild hunting data
-        this.internal.log.detail('Caching hunting data and expected spoils');
-        // TODO - Solve the problem of other catpower consumers interfering with this metric
-        this.internal.huntingCache.allowHunting = ajk.base.getJob('hunter').unlocked;
-        this.internal.huntingCache.expectedPerTick = {};
-        var avgHuntsPerTick = this.internal.resourceCache['manpower'].perTick / 100;
-        var hunterRatio = ajk.base.getHunterRatio();
-
-        var expectedFursPerHunt = 39.5 + ((65 * (hunterRatio - 1)) / 2);
-        this.internal.huntingCache.expectedPerTick['furs'] = expectedFursPerHunt * avgHuntsPerTick;
-
-        var ivoryChance = (44 + (2 * hunterRatio)) / 100;
-        var ivoryAmount = 24.5 + ((40 * (hunterRatio - 1)) / 2);
-        this.internal.huntingCache.expectedPerTick['ivory'] = ivoryChance * ivoryAmount * avgHuntsPerTick;
-
-        this.internal.huntingCache.avgHuntsPerTick = avgHuntsPerTick;
-
-        // Update per-tick data based on the hunting cache
-        if (this.internal.huntingCache.allowHunting)
-        {
-            for (var resource in this.internal.huntingCache.expectedPerTick)
-            {
-                this.internal.resourceCache[resource].perTick += this.internal.huntingCache.expectedPerTick[resource];
-            }
-        }
+        this.internal.cacheHuntingData();
 
         // Rebuild effect cache
-        this.internal.effectCache = {};
-        for (var i = 0; i < this.internal.effectTypes.length; ++i)
-        {
-            this.internal.effectCache[this.internal.effectTypes[i].type] = {
-                effectToResource:   {},
-                resourceToItems:    {},
-                itemToResourceData: {},
-            };
-        }
-
-        // Take the items and cache their effects
-        this.internal.cacheEffectsFor(itemMap);
+        this.internal.cacheEffects(itemMap);
 
         // Cache exploration data
         this.internal.cacheExplorationData();
 
         this.internal.log.unindent();
+    },
+
+    getResourceData: function(resourceName)
+    {
+        return this.internal.resourceCache[resourceName];
     },
 
     getTradeDataForResource: function(resourceName)
@@ -418,5 +450,10 @@ ajk.cache = {
     getResourceConsumptionForItem: function(itemName)
     {
         return this.internal.effectCache['consumption'].itemToResourceData[itemName];
+    },
+
+    getResourceCostForCraft: function(resourceName, craftName)
+    {
+        return this.internal.craftCache.costToCrafts[resourceName][craftName];
     },
 };

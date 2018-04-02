@@ -12,6 +12,7 @@ ajk.backup = {
 
     shouldPerformBackup: function(doBackup)
     {
+        ajk.config.performBackup = doBackup;
         if (this.thread != null)
         {
             clearInterval(this.thread);
@@ -20,6 +21,9 @@ ajk.backup = {
         if (!doBackup) { return; }
         this.log.info('Backing up export string every ' + this.frequncy + ' hours');
         this.thread = setInterval(function() { ajk.backup.backupExportString(); }, this.frequency * 60 * 60 * 1000);
+
+        // This is a bit non-hierarchical, but we put this here so that the backup thread can update the UI independently of the core tick thread
+        ajk.ui.refresh();
     },
 
     init: function()
