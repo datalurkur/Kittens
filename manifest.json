@@ -13,6 +13,7 @@
         "analysis.js",
         "ui.js",
         "core.js",
+        "easteregg.js",
         "style.css",
         "sidebar.html",
         "backupWidget.html"

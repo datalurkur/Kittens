@@ -8,7 +8,8 @@ const scripts = [
     'jobs.js',
     'analysis.js',
     'core.js',
-    'ui.js'
+    'ui.js',
+    'easteregg.js'
 ];
 
 const loadScript = function(index)
