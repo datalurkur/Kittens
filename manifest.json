@@ -14,6 +14,7 @@
         "ui.js",
         "core.js",
         "easteregg.js",
+        "statistics.js",
         "style.css",
         "sidebar.html",
         "backupWidget.html"

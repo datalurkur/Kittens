@@ -1,3 +1,4 @@
+/* Accordion styles */
 .accordion {
     border: none;
     outline: none;
@@ -43,6 +44,7 @@
     font-size: 14px;
 }
 
+/* Table styles */
 .ajkTable {
     font-family: 'Times New Roman', Times, serif;
     font-size: 14px;
@@ -58,6 +60,7 @@
     background: rgb(16, 16, 16);
 }
 
+/* Inline text styles */
 span.ajkAdjustment {
     margin-left: 5px;
     margin-right: 5px;
@@ -76,4 +79,62 @@ span.ajkAdjustment.positive {
 
 span.ajkAdjustment.negative {
     color: rgb(256, 64, 64);
+}
+
+/* Modal dialog */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1;
+    padding-top: 100px;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background: rgb(0, 0, 0);
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.modalContent {
+    margin: auto;
+    padding: 20px;
+    border: 1px solid #888;
+    width: 80%;
+    min-height: 100px;
+    background: #201F1D;
+}
+
+.modalCloseButton {
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+}
+
+.modalCloseButton:hover,
+.modalCloseButton:focus {
+    text-decoration: none;
+    cursor: pointer;
+}
+
+/* Graph styles */
+.line {
+    fill: none;
+    stroke: steelblue;
+    stroke-width: 1.5px;
+}
+
+.axis--x text {
+    font: 10px sans-serif;
+}
+
+.axis--y text {
+    font: oblique 15px Georgia, serif;
+}
+
+.axis path,
+.axis line {
+    fill: none;
+    stroke: #000;
+    shape-rendering: crispEdges;
 }

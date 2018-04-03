@@ -1,18 +1,23 @@
 'use strict';
 
-const scripts = [
+const externalScripts = [
+    '//d3js.org/d3.v3.min.js'
+];
+
+const internalScripts = [
     'base.js',
     'backup.js',
     'cache.js',
     'costData.js',
     'jobs.js',
     'analysis.js',
+    'statistics.js',
     'core.js',
     'ui.js',
-    'easteregg.js'
+    'easteregg.js',
 ];
 
-const loadScript = function(index)
+const loadScript = function(scripts, index, internal)
 {
     if (index >= scripts.length) { return; }
 
@@ -20,11 +25,11 @@ const loadScript = function(index)
     var head = document.head || document.getElementsByTagName('head')[0];
 
     var script = document.createElement('script');
-    script.src = chrome.runtime.getURL(scriptName);
+    script.src = internal ? chrome.runtime.getURL(scriptName) : scriptName;
     script.onload = function()
     {
         console.log('Script ' + scriptName + ' loaded');
-        loadScript(index + 1);
+        loadScript(scripts, index + 1, internal);
     }
     head.appendChild(script);
 }
@@ -67,7 +72,8 @@ const handleDocumentLoaded = function()
     injectHtml('backupWidget.html', 'leftColumn');
 
     // Inject scripts
-    loadScript(0);
+    loadScript(externalScripts, 0, false);
+    loadScript(internalScripts, 0, true);
 };
 
 if (document.readyState === "loading")

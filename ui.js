@@ -90,6 +90,50 @@ ajk.ui = {
         });
     },
 
+    buildGraphs: function(snapshots)
+    {
+        var width = 256;
+        var height = 256;
+        var minX = 0;
+        var maxX = 0;
+        var minY = 0;
+        var maxY = 0;
+        var keys = [];
+        if (snapshots.length != 0)
+        {
+            keys = Object.keys(snapshots[0]);
+            minX = snapshots[snapshots.length - 1].time;
+            maxX = snapshots[0].time;
+            minY = d3.min(snapshots, function(d) { return d3.min(Object.values(d.resources)); });
+            minY = d3.max(snapshots, function(d) { return d3.max(Object.values(d.resources)); });
+        }
+        var x = d3.time.scale.utc().domain(minX, maxX).range([0, width]);
+        var y = d3.scale.linear().domain(minY, maxY).range([height, 0]);
+        var xAxis = d3.svg.axis().scale(x).orient('bottom');
+        var yAxis = d3.svg.axis().scale(y).orient('left');
+        var line = d3.svg.line()
+            .x(function(d) { return x(d[0]); })
+            .y(function(d) { return y(d[1]); });
+        var svg = d3.select('#resourceProductionGraph').append('svg')
+            .attr('width', width + 32)
+            .attr('height', height + 32)
+            .append('g').attr('transform', 'translate(16,16)');
+        svg.append('g')
+            .attr('class', 'axis axis--y')
+            .attr('transform', 'translate(-10,0)')
+            .call(yAxis);
+        svg.append('g')
+            .attr('class', 'axis axis--x')
+            .attr('transform', 'translate(0,' + (height + 10) + ')')
+            .call(xAxis);
+        keys.forEach((key) => {
+            svg.append('path').
+                datum(d3.map(snapshots, (d) => { return d.resources[key]; }))
+                .attr('clas', 'line')
+                .attr('d', line);
+        });
+    },
+
     init: function()
     {
         this.createLogChannelToggles();
@@ -98,6 +142,7 @@ ajk.ui = {
         $('.accordion').click(function() { ajk.ui.togglePanel(this); });
         $('.inlineAccordion').click(function() { ajk.ui.togglePanel(this); });
 
+        // Connect controls to callbacks and set initial values
         $('#simulateButton').click(function() { ajk.core.simulateTick(); });
 
         var simToggle = $('#simulateToggle');
@@ -126,6 +171,18 @@ ajk.ui = {
 
         $('#backupSigninButton').click(function() { ajk.backup.handleSignInClick(); });
         $('#backupSignoutButton').click(function() { ajk.backup.handleSignOutClick(); });
+
+        // Register events for the modal window
+        $('#ajkModalWindowOpenButton').click(function() { $('#ajkModalWindow').css('display', 'block'); });
+        $('#ajkModalWindowCloseButton').click(function() { $('#ajkModalWindow').css('display', 'none'); });
+        $(window).click(function(event)
+        {
+            var modal = $('#ajkModalWindow');
+            if (event.target == modal[0])
+            {
+                modal.css('display', 'none');
+            }
+        });
     },
 
     refresh: function()
