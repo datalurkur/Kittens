@@ -1,8 +1,11 @@
 'use strict';
 
-// Builds a sparse structure that contains various options for constructing something, but makes no decisions based on time or current resource availability
-// Depends on cached trade data
-// These can be cached per-item, but need to be recomputed whenever trade data changes or resources are unlocked
+/*
+  Builds a sparse structure that contains various options for constructing something,
+  but makes no decisions based on time or current resource availability.
+  Also stores current craft ratios and trade amounts.
+  Depends on cached trade and craft information.
+*/
 ajk.costDataFactory = {
     internal:
     {
@@ -34,12 +37,9 @@ ajk.costDataFactory = {
             this.log.indent();
 
             var data = {
-                log: this.log,
-
-                // Basic Info
-                resourceName: resource,
-                price:        value,
-                options:      [],
+                resourceName:        resource,
+                price:               value,
+                options:             []
             };
 
             if (ajk.base.getResource(resource).craftable && resource != 'wood')
@@ -79,17 +79,6 @@ ajk.costDataFactory = {
             this.log.unindent();
             return data;
         },
-
-        buildBlockingCostData: function()
-        {
-            return {
-                method:       'blocked',
-                dependencies: [],
-                ratio:        1,
-                extraData:    null,
-                identifier:   'blocked',
-            };
-        },
     },
 
     buildCostData: function(cache, item)
@@ -116,6 +105,10 @@ ajk.costDataFactory = {
     },
 };
 
+/*
+  Given a cost data structure, builds a detailed set of decisions regarding which options should be followed
+  in order to minimize the total time until completion.
+*/
 ajk.decisionTreeFactory = {
     internal:
     {
@@ -136,11 +129,12 @@ ajk.decisionTreeFactory = {
                 dependencies:       [],
 
                 // Computed properties
-                actionCount:        1,
-                capacityLimiters:   [],
-                capacityBlockers:   [],
-                maxTime:            0,
-                bottleneck:         null,
+                actionCount:        1,    // The number of times this node must be executed before it is fulfilled
+                capacityLimiters:   [],   // A list of resources whose capacity constraints are limiting the effectiveness of this node
+                capacityBlockers:   [],   // A list of resources whose capacity constraints are preventing the fulfillment of this node
+                maxTime:            0,    // The number of ticks until the most expensive dependency is met
+                bottleneck:         null, // The resource that is most in-demand for fulfillment of this node
+                effFulfillmentRate: 0,    // The minimum effFulfillmentRate of all the dependencies
 
                 // Accumulator
                 consumption:        {},
@@ -244,15 +238,17 @@ ajk.decisionTreeFactory = {
                 options:            [],
 
                 // Computed properties
-                capacityLimiters:   [],
-                capacityBlockers:   [],
-                multiplier:         1,
-                consumed:           0,
-                deficit:            0,
-                baseTime:           0,
-                decision:           null,
-                decisionTime:       Infinity,
-                bottleneck:         null,
+                baseFulfillmentRate: 0,        // What ratio of the base cost is produced per-tick purely by waiting
+                multiplier:          1,        // The full price is the base cost times this number
+                consumed:            0,        // How much of the available resource pool was used to fulfill the cost
+                deficit:             0,        // How much of the full price is left to be produced
+                baseTime:            0,        // The number of ticks until this node is fulfilled by waiting
+                decision:            null,     // The selected option to optimize fulfillment of this node
+                decisionTime:        Infinity, // The number of ticks until this node is fulfilled
+                effFulfillmentRate:  0,        // What ratio of the base cost is produced per-tick including the decision
+                capacityLimiters:    [],       // A list of resources whose capacity constraints are limiting the effectiveness of this node
+                capacityBlockers:    [],       // A list of resources whose capacity constraints are preventing the fulfillment of this node
+                bottleneck:          null,     // The resource that is most in-demand for fulfillment of this node
 
                 // Accumulator
                 consumption:        {},
@@ -303,6 +299,9 @@ ajk.decisionTreeFactory = {
                     this.log.trace('Updating resource node: ' + this.costData.resourceName);
                     this.log.indent();
 
+                    var rData = cache.getResourceData(this.costData.resourceName);
+                    this.baseFulfillmentRate = rData.perTick / this.costData.price;
+
                     // Compute properties dependent on the parent node
                     if (this.parentOption == null)
                     {
@@ -315,10 +314,9 @@ ajk.decisionTreeFactory = {
                         this.consumption = this.parentOption.consumption;
                     }
 
-                    var maxCapacity = cache.getMaxQuantityOfResource(this.costData.resourceName);
-                    if (this.costData.price > maxCapacity)
+                    if (this.costData.price > rData.max)
                     {
-                        this.log.trace('Capacity limited (max storage is ' + maxCapacity + ')');
+                        this.log.trace('Capacity limited (max storage is ' + rData.max + ')');
                         this.capacityBlockers.push([this.costData.resourceName, this.costData.price]);
                     }
 
@@ -333,7 +331,7 @@ ajk.decisionTreeFactory = {
                     }
                     else
                     {
-                        this.baseTime = this.deficit / cache.getCurrentProductionOfResource(this.costData.resourceName);
+                        this.baseTime = this.deficit / rData.perTick;
                         if (this.baseTime < 0) { this.baseTime = Infinity; }
                         this.log.trace('It will be ' + this.baseTime + ' ticks until quantity ' + this.deficit + ' is produced');
                     }
@@ -381,10 +379,12 @@ ajk.decisionTreeFactory = {
                         }
                     });
 
+                    this.effFulfillmentRate = this.baseFulfillmentRate;
                     if (this.decision != null)
                     {
                         this.decision.applyConsumption(true);
                         if (this.decision.bottleneck != null) { this.bottleneck = this.decision.bottleneck; }
+                        this.effFulfillmentRate += this.decision.effFulfillmentRate;
                     }
                     else if (this.deficit > 0)
                     {

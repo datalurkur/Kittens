@@ -1,6 +1,20 @@
 'use strict';
 
-// TODO - Figure out how to export snapshots of data from the game
+downloadSnapshot()
+{
+    var data = JSON.stringify(gamePage, function(k,v) {
+             if (k == 'game') { return null; }
+        else if (k == 'tab')  { return null; }
+        else if (k == 'metaAccessor') { return null;}
+        return v;
+    });
+    var fakeLink = document.createElement('a');
+    var file = new Blob([data], {type:'text/plain'});
+    fakeLink.href = URL.createObjectURL(file);
+    fakeLink.download = 'snapshot.json';
+    fakeLink.click();
+}
+
 var testData = {
 
 };

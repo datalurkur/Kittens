@@ -452,21 +452,6 @@ ajk.cache = {
         return this.internal.tradeCache.resources[resourceName] || [];
     },
 
-    getAvailableQuantityOfResource: function(resourceName)
-    {
-        return this.internal.resourceCache[resourceName].available;
-    },
-
-    getCurrentProductionOfResource: function(resourceName)
-    {
-        return this.internal.resourceCache[resourceName].perTick;
-    },
-
-    getMaxQuantityOfResource: function(resourceName)
-    {
-        return this.internal.resourceCache[resourceName].max;
-    },
-
     getResourceConsumptionForItem: function(itemName)
     {
         return this.internal.effectCache['consumption'].itemToResourceData[itemName];
