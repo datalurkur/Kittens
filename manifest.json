@@ -11,10 +11,11 @@
         "costData.js",
         "jobs.js",
         "analysis.js",
+        "statistics.js",
+        "graph.js",
         "ui.js",
         "core.js",
         "easteregg.js",
-        "statistics.js",
         "style.css",
         "sidebar.html",
         "backupWidget.html"

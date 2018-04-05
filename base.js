@@ -112,13 +112,15 @@ var ajk = {
             if (this.simulate) { return; }
             gamePage.diplomacy.trade(this.getRace(raceName));
         },
-        purchaseItem: function(item)
+        readyForPurchase: function(item)
         {
             item.update();
-            if (!item.controller.hasResources(item.model)) { return false; }
+            return item.controller.hasResources(item.model);
+        },
+        purchaseItem: function(item)
+        {
             if (this.simulate) { return true; }
             var success = false;
-            // TODO - Fix this callback for exploration
             item.controller.buyItem(item.model, {}, function(result) {
                 success |= result;
             });
@@ -133,6 +135,11 @@ ajk.config = {
     detailedLogsOnError:   true,
     detailedLogsOnSuccess: false,
     ticking:               false,
+
+    tickFrequency: 10,
+    catpowerConversionRatio: 0.75,
+    conversionRatio: 0.1,
+    conversionMaxRatio: 0.97,
 };
 
 ajk.util = {

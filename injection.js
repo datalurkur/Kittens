@@ -1,35 +1,38 @@
 'use strict';
 
-const externalScripts = [
-    '//d3js.org/d3.v3.min.js'
+const scripts = [
+    {name: 'base.js', external: false, asModule: false},
+    {name: 'backup.js', external: false, asModule: false},
+    {name: 'cache.js', external: false, asModule: false},
+    {name: 'costData.js', external: false, asModule: false},
+    {name: 'jobs.js', external: false, asModule: false},
+    {name: 'analysis.js', external: false, asModule: false},
+    {name: 'core.js', external: false, asModule: false},
+    {name: "https://d3js.org/d3.v3.min.js", external: true, asModule: false},
+    {name: 'statistics.js', external: false, asModule: false},
+    {name: 'graph.js', external: false, asModule: false},
+    {name: 'ui.js', external: false, asModule: false},
+    {name: 'easteregg.js', external: false, asModule: false},
 ];
 
-const internalScripts = [
-    'base.js',
-    'backup.js',
-    'cache.js',
-    'costData.js',
-    'jobs.js',
-    'analysis.js',
-    'statistics.js',
-    'core.js',
-    'ui.js',
-    'easteregg.js',
-];
-
-const loadScript = function(scripts, index, internal)
+const loadScript = function(index)
 {
     if (index >= scripts.length) { return; }
+    var data = scripts[index];
 
-    var scriptName = scripts[index];
+    var scriptName = scripts[index].name;
     var head = document.head || document.getElementsByTagName('head')[0];
 
     var script = document.createElement('script');
-    script.src = internal ? chrome.runtime.getURL(scriptName) : scriptName;
+    script.src = (data.external) ? scriptName : chrome.runtime.getURL(scriptName);
+    if (data.asModule)
+    {
+        script.type = 'module';
+    }
     script.onload = function()
     {
         console.log('Script ' + scriptName + ' loaded');
-        loadScript(scripts, index + 1, internal);
+        loadScript(index + 1);
     }
     head.appendChild(script);
 }
@@ -72,8 +75,7 @@ const handleDocumentLoaded = function()
     injectHtml('backupWidget.html', 'leftColumn');
 
     // Inject scripts
-    loadScript(externalScripts, 0, false);
-    loadScript(internalScripts, 0, true);
+    loadScript(0);
 };
 
 if (document.readyState === "loading")

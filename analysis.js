@@ -87,7 +87,7 @@ ajk.analysisModule.addPreprocessor(function(data, cache, itemMap, log) {
         var exclude = false;
         for (var resourceName in consumption)
         {
-            if (cache.getCurrentProductionOfResource(resourceName) + consumption[resourceName] <= 0)
+            if (cache.getResourceData(resourceName).perTick + consumption[resourceName] <= 0)
             {
                 exclude = true;
                 ajk.util.ensureKey(data.resourceProductionLimitations, resourceName, []).push(consumption[resourceName]);

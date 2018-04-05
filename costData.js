@@ -3,7 +3,7 @@
 /*
   Builds a sparse structure that contains various options for constructing something,
   but makes no decisions based on time or current resource availability.
-  Also stores current craft ratios and trade amounts.
+  Also stores current craft ratios and trade amounts
   Depends on cached trade and craft information.
 */
 ajk.costDataFactory = {
@@ -39,7 +39,7 @@ ajk.costDataFactory = {
             var data = {
                 resourceName:        resource,
                 price:               value,
-                options:             []
+                options:             [],
             };
 
             if (ajk.base.getResource(resource).craftable && resource != 'wood')
@@ -134,7 +134,6 @@ ajk.decisionTreeFactory = {
                 capacityBlockers:   [],   // A list of resources whose capacity constraints are preventing the fulfillment of this node
                 maxTime:            0,    // The number of ticks until the most expensive dependency is met
                 bottleneck:         null, // The resource that is most in-demand for fulfillment of this node
-                effFulfillmentRate: 0,    // The minimum effFulfillmentRate of all the dependencies
 
                 // Accumulator
                 consumption:        {},
@@ -180,8 +179,9 @@ ajk.decisionTreeFactory = {
 
                 update: function()
                 {
-                    this.log.trace('Updating option node: ' + this.optionData.method);
+                    this.log.trace('Updating decisions for option ' + this.optionData.method);
                     this.log.indent();
+
                     if (this.parentOption == null)
                     {
                         this.actionCount = 1;
@@ -194,17 +194,16 @@ ajk.decisionTreeFactory = {
                     }
                     this.log.detail('Costed option at ' + this.actionCount + ' actions required');
 
-                    for (var i = 0; i < this.dependencies.length; ++i)
-                    {
-                        this.dependencies[i].update();
-                        this.capacityLimiters = this.capacityLimiters.concat(this.dependencies[i].capacityLimiters);
-                        this.capacityBlockers = this.capacityBlockers.concat(this.dependencies[i].capacityBlockers);
-                        if (this.maxTime < this.dependencies[i].decisionTime)
+                    this.dependencies.forEach((dep) => {
+                        dep.update();
+                        this.capacityLimiters = this.capacityLimiters.concat(dep.capacityLimiters);
+                        this.capacityBlockers = this.capacityBlockers.concat(dep.capacityBlockers);
+                        if (this.maxTime < dep.decisionTime)
                         {
-                            this.maxTime = this.dependencies[i].decisionTime;
-                            this.bottleneck = this.dependencies[i].bottleneck;
+                            this.maxTime    = dep.decisionTime;
+                            this.bottleneck = dep.bottleneck;
                         }
-                    }
+                    });
 
                     // This implicitly happens during update
                     this.consumptionApplied = true;
@@ -238,14 +237,12 @@ ajk.decisionTreeFactory = {
                 options:            [],
 
                 // Computed properties
-                baseFulfillmentRate: 0,        // What ratio of the base cost is produced per-tick purely by waiting
                 multiplier:          1,        // The full price is the base cost times this number
                 consumed:            0,        // How much of the available resource pool was used to fulfill the cost
                 deficit:             0,        // How much of the full price is left to be produced
                 baseTime:            0,        // The number of ticks until this node is fulfilled by waiting
                 decision:            null,     // The selected option to optimize fulfillment of this node
                 decisionTime:        Infinity, // The number of ticks until this node is fulfilled
-                effFulfillmentRate:  0,        // What ratio of the base cost is produced per-tick including the decision
                 capacityLimiters:    [],       // A list of resources whose capacity constraints are limiting the effectiveness of this node
                 capacityBlockers:    [],       // A list of resources whose capacity constraints are preventing the fulfillment of this node
                 bottleneck:          null,     // The resource that is most in-demand for fulfillment of this node
@@ -260,7 +257,7 @@ ajk.decisionTreeFactory = {
                     this.consumptionApplied = true;
 
                     // Compute properties dependent on accumulated resource consumption at this decision
-                    var adjustedAmountAvailable = cache.getAvailableQuantityOfResource(this.costData.resourceName);
+                    var adjustedAmountAvailable = cache.getResourceData(this.costData.resourceName).available;
                     var amountRequired = this.costData.price * this.multiplier;
                     if (this.consumption.hasOwnProperty(this.costData.resourceName))
                     {
@@ -300,7 +297,6 @@ ajk.decisionTreeFactory = {
                     this.log.indent();
 
                     var rData = cache.getResourceData(this.costData.resourceName);
-                    this.baseFulfillmentRate = rData.perTick / this.costData.price;
 
                     // Compute properties dependent on the parent node
                     if (this.parentOption == null)
@@ -314,13 +310,14 @@ ajk.decisionTreeFactory = {
                         this.consumption = this.parentOption.consumption;
                     }
 
+                    // Check for capacity blockers
                     if (this.costData.price > rData.max)
                     {
                         this.log.trace('Capacity limited (max storage is ' + rData.max + ')');
                         this.capacityBlockers.push([this.costData.resourceName, this.costData.price]);
                     }
 
-                    this.log.trace('Costing resource with multiplier ' + this.multiplier);
+                    // Accumulate resource consumption
                     this.applyConsumption(false);
 
                     // Compute time-to-completion based on deficit
@@ -336,13 +333,6 @@ ajk.decisionTreeFactory = {
                         this.log.trace('It will be ' + this.baseTime + ' ticks until quantity ' + this.deficit + ' is produced');
                     }
                     this.decisionTime = this.baseTime;
-
-                    // TODO - Factor current production time into options (or figure out if there's even an intelligent way to do that)
-                    // In the amount of time we wait to trade / craft the deficit of a resource, there may be some production happening in the background that actually changes the amount of that resource we need to trade / craft for
-                    // However, if we adjust the amount accordingly, that changes the time required to trade / craft for the new amount, which changes the total amount produced in the background...
-                    // The solution to this problem is likely creating an equation that represents the time for a given decision path and then solving the equation
-                    // The benefits of doing this are likely marginal at best...
-                    // Nah. This is probably gonna stay a TODO forever.
 
                     // Update the dependent decision trees
                     this.options.forEach((opt) => {
@@ -379,12 +369,12 @@ ajk.decisionTreeFactory = {
                         }
                     });
 
-                    this.effFulfillmentRate = this.baseFulfillmentRate;
+                    // Apply resource consumption for the decision made
+                    // Plumb bottlneck while we're at it
                     if (this.decision != null)
                     {
                         this.decision.applyConsumption(true);
                         if (this.decision.bottleneck != null) { this.bottleneck = this.decision.bottleneck; }
-                        this.effFulfillmentRate += this.decision.effFulfillmentRate;
                     }
                     else if (this.deficit > 0)
                     {

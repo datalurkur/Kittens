@@ -117,24 +117,37 @@ span.ajkAdjustment.negative {
     cursor: pointer;
 }
 
+.graphToggleContainer
+{
+    width: 200px;
+}
+
+svg .title {
+    fill: #fff;
+    font-size: 30px;
+    font-family: Arial;
+}
+
 /* Graph styles */
-.line {
+path.line {
     fill: none;
-    stroke: steelblue;
     stroke-width: 1.5px;
 }
 
-.axis--x text {
-    font: 10px sans-serif;
-}
-
-.axis--y text {
-    font: oblique 15px Georgia, serif;
+text.lineLabel {
+    font-size: 12px;
+    font-family: Arial;
 }
 
 .axis path,
 .axis line {
     fill: none;
-    stroke: #000;
+    stroke: #fff;
     shape-rendering: crispEdges;
+}
+
+.axis .tick {
+    fill: #fff;
+    font-size: 12px;
+    font-family: Arial;
 }

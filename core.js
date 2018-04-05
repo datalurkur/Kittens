@@ -20,11 +20,7 @@ ajk.core = {
         },
 
         // Configuration
-        tickFrequency: 10,
 
-        catpowerConversionRatio: 0.75,
-        conversionRatio: 0.1,
-        conversionMaxRatio: 0.97,
 
         // Operating variables
         tickThread:   null,
@@ -245,12 +241,12 @@ ajk.core = {
                     }
                     else if (method == 'purchase' || method == 'explore')
                     {
-                        if (opDecision.maxTime == 0)
+                        if (ajk.base.readyForPurchase(opDecision.optionData.extraData))
                         {
                             this.log.detail('Ready to ' + method);
                             if (!ajk.base.purchaseItem(opDecision.optionData.extraData))
                             {
-                                this.log.warn('Failed to ' + method);
+                                this.log.error('Failed to ' + method + ' ' + opDecision.optionData.identifier);
                             }
                             else
                             {
@@ -277,19 +273,21 @@ ajk.core = {
         convertResources: function()
         {
             this.log.debug('Converting resources');
+            if (this.successes > 0) { this.cache.refresh(); }
 
             for (var rName in this.resourceConversions)
             {
                 var rData = this.cache.getResourceData(rName);
-                if (!rData.available) { continue; }
+                if (!rData.unlocked) { continue; }
 
-                if (rData.amount / rData.max >= this.conversionMaxRatio)
+                if (rData.available / rData.max >= ajk.config.conversionMaxRatio)
                 {
-                    var amountToConvert =  rData.max * this.conversionRatio;
-                    var craftPrice = this.cache.getResourceCostForCraft(rName, this.resourceConversions[rName]);
+                    var craftName = this.resourceConversions[rName];
+                    var amountToConvert =  rData.max * ajk.config.conversionRatio;
+                    var craftPrice = this.cache.getResourceCostForCraft(rName, craftName);
                     var numCrafts = Math.ceil(amountToConvert / craftPrice);
-                    this.log.debug('Converting ' + amountToConvert + ' ' + rName + 's into ' + craft.name);
-                    if (!ajk.base.craft(craft.name, numCrafts))
+                    this.log.debug('Converting ' + amountToConvert + ' ' + rName + 's into ' + craftName);
+                    if (!ajk.base.craft(craftName, numCrafts))
                     {
                         this.log.error('Resource conversion failed');
                     }
@@ -297,15 +295,15 @@ ajk.core = {
             }
 
             var catPower = this.cache.getResourceData('manpower');
-            if (catPower.available && catPower.amount / catPower.max >= this.conversionMaxRatio && !this.inDemand('manpower'))
+            if (catPower.unlocked && catPower.available / catPower.max >= ajk.config.conversionMaxRatio && !this.inDemand('manpower'))
             {
-                var numHunts = Math.ceil(catPower.max * this.catpowerConversionRatio / 100);
+                var numHunts = Math.ceil(catPower.max * ajk.config.catpowerConversionRatio / 100);
                 this.log.debug('Sending hunters ' + numHunts + ' times');
                 ajk.base.hunt(numHunts);
             }
 
             var faith = this.cache.getResourceData('faith');
-            if (faith.available && faith.amount == faith.max && !this.inDemand('faith'))
+            if (faith.unlocked && faith.available == faith.max && !this.inDemand('faith'))
             {
                 this.log.debug('Praising the sun');
                 ajk.base.praise();
@@ -329,6 +327,7 @@ ajk.core = {
         refreshUI: function()
         {
             ajk.ui.refreshPriorities(this.itemData, this.analysisData);
+            ajk.ui.refresh();
         },
 
         cacheNeedsUpdate: function()
@@ -381,6 +380,9 @@ ajk.core = {
             //ajk.jobs.assignFreeKittens();
             timerData.interval('Job Assignment');
 
+            ajk.statistics.update(this.cache);
+            timerData.interval('Statistics');
+
             this.refreshUI();
             timerData.end('UI Refresh');
         },
@@ -428,9 +430,8 @@ ajk.core = {
 
         if (doTick)
         {
-            this.internal.log.info('Ticking every ' + this.internal.tickFrequency + ' seconds');
-            this.simulateTick();
-            this.internal.tickThread = setInterval(function() { ajk.core.internal.tick(); }, this.internal.tickFrequency * 1000);
+            this.internal.log.info('Ticking every ' + ajk.config.tickFrequency + ' seconds');
+            this.internal.tickThread = setInterval(function() { ajk.core.internal.tick(); }, ajk.config.tickFrequency * 1000);
         }
 
         // Yeah yeah, singletons are gross, get over it

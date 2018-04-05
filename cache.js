@@ -259,7 +259,6 @@ ajk.cache = {
                 var buffer = this.getBufferFor(res.name);
                 this.resourceCache[res.name] = {
                     unlocked:  this.resourceUnlocked(res.name),
-                    perTick:   this.getNetProductionOf(res.name),
                     buffer:    buffer,
                     max:       (res.maxValue == 0) ? Infinity : Math.max(0, res.maxValue - buffer),
                 };
@@ -271,21 +270,9 @@ ajk.cache = {
         {
             for (var resource in this.resourceCache)
             {
-                var rData = this.resourceCache[resource];
-                var liveData = ajk.base.getResource(resource);
-
-                var available    = liveData.value;
-                var bufferNeeded = -Math.min(0, available - rData.buffer);
-
-                if (bufferNeeded > 0)
-                {
-                    this.log.detail('Reserving a buffer of ' + bufferNeeded + ' ' + resource);
-                }
-                available -= bufferNeeded;
-                available = Math.max(0, available);
-
-                rData.reserveBuffer = bufferNeeded;
-                rData.available = available;
+                var rData       = this.resourceCache[resource];
+                rData.perTick   = this.getNetProductionOf(resource);
+                rData.available = Math.max(0, ajk.base.getResource(resource).value - rData.buffer);
             }
         },
 
@@ -440,6 +427,9 @@ ajk.cache = {
     {
         // Refresh only raw amounts and reserve buffers
         this.internal.cacheResourcePoolData();
+
+        // Rebuild hunting data
+        this.internal.cacheHuntingData();
     },
 
     getResourceData: function(resourceName)

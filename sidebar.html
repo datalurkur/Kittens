@@ -43,8 +43,16 @@
 <input type="button" id="ajkModalWindowOpenButton" value="Details" style="width: 200px" />
 <div id="ajkModalWindow" class="modal">
   <div class="modalContent">
+    <input type="button" id="clearStatisticsButton" value="Clear Statistics" style="width: 200px" />
     <span class="modalCloseButton" id="ajkModalWindowCloseButton">&times;</span>
-    <div id="resourceProductionGraph"></div>
+    <table>
+        <tbody>
+            <tr>
+                <td class="resourceToggleContainer"></td>
+                <td><div id="resourceProductionGraph"></div></td>
+            </tr>
+        </tbody>
+    </table>
   </div>
 </div>
 <br/>

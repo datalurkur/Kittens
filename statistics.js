@@ -22,13 +22,18 @@
 ajk.statistics = {
     internal:
     {
-        maxSnapshots: 6 * 60 * 24 * 1, // 6 snapshots per minute -> 1 full day of data
-        snapshots:    [],
+        maxSnapshots: (60 * 60 * 24 * 1) / ajk.config.tickFrequency,
+        snapshots:
+        {
+            size:    0,
+            current: 0,
+            buffer:  [],
+        },
 
-        getSnapshot: function(cache)
+        buildSnapshot: function(cache)
         {
             return {
-                time:      new Date(),
+                time: (new Date()).valueOf(),
                 resources: jQuery.extend(true, {}, cache.internal.resourceCache),
             };
         },
@@ -42,25 +47,70 @@ ajk.statistics = {
         loadFromWebStorage: function()
         {
             if (typeof Storage === 'undefined') { return; }
-            if (localStorage.ajkStats)
+            if (typeof localStorage.ajkStats === 'undefined')
             {
-                this.snapshots = JSON.parse(localStorage.ajkStats);
+                this.snapshots.buffer = new Array(this.maxSnapshots);
             }
             else
             {
-                this.snapshots = [];
+                this.snapshots = JSON.parse(localStorage.ajkStats);
             }
+        },
+
+        addSnapshot: function(snapshot)
+        {
+            this.snapshots.buffer[this.snapshots.current] = snapshot;
+            this.snapshots.current += 1;
+            if (this.snapshots.current >= this.snapshots.buffer.length) { this.snapshots.current -= this.snapshots.buffer.length; }
+            if (this.snapshots.size < this.snapshots.buffer.length) { this.snapshots.size += 1; }
+        },
+
+        getSnapshot: function(index)
+        {
+            var offsetIndex = (index + this.snapshots.current) - this.snapshots.size;
+                 if (offsetIndex >= this.snapshots.buffer.length) { offsetIndex -= this.snapshots.buffer.length; }
+            else if (offsetIndex < 0) { offsetIndex += this.snapshots.buffer.length; }
+            return this.snapshots.buffer[offsetIndex];
         },
 
         clearSnapshots: function()
         {
-            this.snapshots = [];
+            this.snapshots = {
+                buffer:  new Array(this.maxSnapshots),
+                size:    0,
+                current: 0,
+            }
         },
     },
 
     update: function(cache)
     {
-        this.internal.getSnapshot(cache);
+        var snapshot = this.internal.buildSnapshot(cache);
+        this.internal.addSnapshot(snapshot);
+    },
+
+    length: function()  { return this.internal.snapshots.size; },
+    get:    function(i) { return this.internal.getSnapshot(i); },
+
+    getAll: function()
+    {
+        var i0 = this.internal.snapshots.current - this.internal.snapshots.size;
+        if (i0 < 0) { i0 += this.internal.snapshots.buffer.length; }
+        var endIndex = i0 + this.internal.snapshots.size;
+        var i1 = Math.min(this.internal.snapshots.buffer.length, endIndex);
+        var i2 = 0;
+        var i3 = Math.max(0, endIndex - this.internal.snapshots.buffer.length);
+        return this.internal.snapshots.buffer.slice(i0, i1).concat(this.internal.snapshots.buffer.slice(i2, i3));
+    },
+
+    getDataSize: function()
+    {
+        return this.internal.snapshots.buffer.length;
+    },
+
+    getTimeRange: function()
+    {
+        this.internal.snapshots.buffer.length * ajk.config.tickFrequency * 1000;
     },
 };
 
