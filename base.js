@@ -40,7 +40,7 @@ var ajk = {
         getAllCrafts:       function()            { return gamePage.workshop.crafts;                                     },
         getCraft:           function(craftName)   { return gamePage.workshop.getCraft(craftName);                        },
         getCraftRatio:      function()            { return 1 + gamePage.getCraftRatio();                                 },
-        getCraftAllAmount:  function(craftname)   { return gamePage.workshop.getCraftAllCount(craftName);                },
+        getCraftAllAmount:  function(craftName)   { return gamePage.workshop.getCraftAllCount(craftName);                },
 
         // Religion stuff
         getReligionUpgrade: function(upgradeName) { return gamePage.religion.getRU(upgradeName);                         },
@@ -139,12 +139,58 @@ var ajk = {
         trade: function(race, amount)
         {
             if (this.simulate) { return; }
-            gamePage.diplomacy.trade(race, amount);
+            if (ajk.config.useAccurateTrading)
+            {
+                return this.tradeHack(race, amount);
+            }
+            else
+            {
+                gamePage.diplomacy.trade(race, amount);
+                return {};
+            }
         },
         tradeAll: function(raceName)
         {
             if (this.simulate) { return; }
-            gamePage.diplomacy.trade(this.getRace(raceName));
+            if (ajk.config.useAccurateTrading)
+            {
+                var diplo = gamePage.diplomacy;
+                var race = this.getRace(raceName);
+                return this.tradeHack(race, diplo.getMaxTradeAmt(race));
+            }
+            else
+            {
+                gamePage.diplomacy.tradeAll(this.getRace(raceName));
+                return {};
+            }
+        },
+        tradeHack: function(race, amt)
+        {
+            var diplo = gamePage.diplomacy;
+
+            // This is copied directly from the kittens code's diplomacy module
+            // With this behavior copied, we can directly return the results of trade for easy analysis
+            // In the kittens code, diplo == this
+            // ----------------------------------------------------------------------------------------
+            if (!diplo.hasMultipleResources(race, amt))
+            {
+                return;
+            }
+
+            diplo.game.resPool.addResEvent("manpower", -50 * amt);
+            diplo.game.resPool.addResEvent("gold", -15 * amt);
+            diplo.game.resPool.addResEvent(race.buys[0].name, -race.buys[0].val * amt);
+
+            var yieldResTotal = null;
+            for (var i = 0; i < amt; i++)
+            {
+                yieldResTotal = diplo.tradeInternal(race, true, yieldResTotal);  //suppress msg
+            }
+
+            diplo.gainTradeRes(yieldResTotal, amt);
+            // ----------------------------------------------------------------------------------------
+
+            return yieldResTotal;
         },
         readyForPurchase: function(item)
         {
@@ -176,6 +222,7 @@ ajk.config = {
     conversionMaxRatio:      0.97,
 
     useAccurateHunting:      true, // Use copied source in order to get more data about hunting results
+    useAccurateTrading:      true, // Use copied source in order to get more data about trading results
 };
 
 ajk.util = {
@@ -226,7 +273,7 @@ ajk.log = {
         printLogsToConsole: function(ignoreLevel)
         {
             this.logQueue.forEach((msgData) => {
-                if (ignoreLevel || (this.logLevel >= msgData.level && (msgData.channel == undefined || this.channelActive(msgData.channel))))
+                if ((ignoreLevel || this.logLevel >= msgData.level) && (msgData.channel == undefined || this.channelActive(msgData.channel)))
                 {
                     var marker      = '[' + msgData.channel.padStart(this.channelNameLength) + '] ';
                     var emptyMarker = ' '.repeat(marker.length);

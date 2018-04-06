@@ -22,96 +22,168 @@
 ajk.statistics = {
     internal:
     {
-        maxSnapshots: (60 * 60 * 24 * 1) / ajk.config.tickFrequency,
-        snapshots:
+        maxValues: 2048,
+
+        ValueSet: function()
         {
-            size:    0,
-            current: 0,
-            buffer:  [],
+            this.values  = [];
+            this.yDomain = [0,1];
         },
 
-        buildSnapshot: function(cache)
+        ValueGroup: function(id)
         {
-            return {
-                time: (new Date()).valueOf(),
-                resources: jQuery.extend(true, {}, cache.internal.resourceCache),
-            };
+            this.id          = id;
+            this.sets        = [];
+            this.totalValues = 0;
+            this.timeDomain  = [0,1];
+            this.yDomain     = [0,1];
+        },
+
+        DataSet: function()
+        {
+            this.allResources     = [];
+            this.perTickResources = {};
+            this.events           = {};
+            this.timeDomain       = [0,1];
+        },
+
+        addValueToSet: function(valueSet, time, value)
+        {
+            valueSet.values.push([time, value]);
+            if (valueSet.values.length == 1)
+            {
+                valueSet.yDomain = [value, value];
+            }
+            else
+            {
+                valueSet.yDomain = [
+                    Math.min(valueSet.yDomain[0], value),
+                    Math.max(valueSet.yDomain[1], value)
+                ];
+            }
+        },
+
+        recomputeYDomainForSet: function(valueSet)
+        {
+            valueSet.yDomain = [
+                Math.min(...valueSet.values),
+                Math.max(...valueSet.values)
+            ];
+        },
+
+        addValueToGroup: function(valueGroup, time, value, threshold)
+        {
+            var pair = [time, value];
+            valueGroup.totalValues += 1;
+
+            // Is this the first value to be added?
+            if (valueGroup.sets.length == 0)
+            {
+                var newSet = new this.ValueSet();
+                valueGroup.sets.push(newSet);
+                this.addValueToSet(newSet, time, value);
+                valueGroup.timeDomain = [time,  time ];
+                valueGroup.yDomain    = [value, value];
+                return;
+            }
+
+            // Determine if a new set should be started
+            var lastSet     = valueGroup.sets[valueGroup.sets.length - 1];
+            var lastElement = lastSet.values[lastSet.values.length - 1];
+            if (lastElement[0] < threshold)
+            {
+                lastSet = new this.ValueSet();
+                valueGroup.sets.push(lastSet);
+            }
+            this.addValueToSet(lastSet, time, value);
+            valueGroup.timeDomain[1] = time;
+
+            // Determine if an element needs removal
+            if (valueGroup.totalValues >= this.maxValues)
+            {
+                var firstSet = valueGroup.sets[0];
+                firstSet.values.shift();
+                if (firstSet.values.length == 0)
+                {
+                    valueGroup.sets.shift();
+                }
+                else
+                {
+                    this.recomputeYDomainForSet(firstSet);
+                }
+                valueGroup.timeDomain[0] = valueGroup.sets[0].values[0][0];
+                valueGroup.yDomain = [
+                    Math.min(...(valueGroup.sets.map(s => s.yDomain[0]))),
+                    Math.max(...(valueGroup.sets.map(s => s.yDomain[1]))),
+                ];
+            }
+            else
+            {
+                valueGroup.yDomain = [
+                    Math.min(valueGroup.yDomain[0], value),
+                    Math.max(valueGroup.yDomain[1], value),
+                ];
+            }
+        },
+
+        addDatapoint: function(cache, tickData)
+        {
+            var time = (new Date()).valueOf();
+            // If the last value in a data set is more than 50% behind the last expected tick, start a new data set
+            var discontinuityThreshold = time - (ajk.config.tickFrequency * 1500);
+
+            for (var resource in cache.internal.resourceCache)
+            {
+                var perTick = cache.internal.resourceCache[resource].perTick;
+                if (perTick != 0)
+                {
+                    if (!this.data.perTickResources.hasOwnProperty(resource))
+                    {
+                        this.data.perTickResources[resource] = new this.ValueGroup();
+                        this.data.allResources.push(resource);
+                    }
+                    this.addValueToGroup(
+                        this.data.perTickResources[resource],
+                        time,
+                        perTick,
+                        discontinuityThreshold
+                    );
+                }
+            }
+
+            this.data.timeDomain = [
+                Math.min(...(Object.values(this.data.perTickResources).map(v => v.timeDomain[0]))),
+                Math.max(...(Object.values(this.data.perTickResources).map(v => v.timeDomain[1]))),
+            ];
         },
 
         saveToWebStorage: function()
         {
             if (typeof Storage === 'undefined') { return; }
-            localStorage.ajkStats = JSON.stringify(this.snapshots);
+            localStorage.ajkStats = JSON.stringify(this.data);
         },
 
         loadFromWebStorage: function()
         {
-            if (typeof Storage === 'undefined') { return; }
-            if (typeof localStorage.ajkStats === 'undefined')
+            if (typeof Storage === 'undefined' || typeof localStorage.ajkStats === 'undefined')
             {
-                this.snapshots.buffer = new Array(this.maxSnapshots);
+                this.clear();
             }
             else
             {
-                this.snapshots = JSON.parse(localStorage.ajkStats);
+                this.data = JSON.parse(localStorage.ajkStats);
             }
         },
 
-        addSnapshot: function(snapshot)
+        clear: function()
         {
-            this.snapshots.buffer[this.snapshots.current] = snapshot;
-            this.snapshots.current += 1;
-            if (this.snapshots.current >= this.snapshots.buffer.length) { this.snapshots.current -= this.snapshots.buffer.length; }
-            if (this.snapshots.size < this.snapshots.buffer.length) { this.snapshots.size += 1; }
-        },
-
-        getSnapshot: function(index)
-        {
-            var offsetIndex = (index + this.snapshots.current) - this.snapshots.size;
-                 if (offsetIndex >= this.snapshots.buffer.length) { offsetIndex -= this.snapshots.buffer.length; }
-            else if (offsetIndex < 0) { offsetIndex += this.snapshots.buffer.length; }
-            return this.snapshots.buffer[offsetIndex];
-        },
-
-        clearSnapshots: function()
-        {
-            this.snapshots = {
-                buffer:  new Array(this.maxSnapshots),
-                size:    0,
-                current: 0,
-            }
+            this.data = new this.DataSet();
         },
     },
 
-    update: function(cache)
-    {
-        var snapshot = this.internal.buildSnapshot(cache);
-        this.internal.addSnapshot(snapshot);
-    },
-
-    length: function()  { return this.internal.snapshots.size; },
-    get:    function(i) { return this.internal.getSnapshot(i); },
-
-    getAll: function()
-    {
-        var i0 = this.internal.snapshots.current - this.internal.snapshots.size;
-        if (i0 < 0) { i0 += this.internal.snapshots.buffer.length; }
-        var endIndex = i0 + this.internal.snapshots.size;
-        var i1 = Math.min(this.internal.snapshots.buffer.length, endIndex);
-        var i2 = 0;
-        var i3 = Math.max(0, endIndex - this.internal.snapshots.buffer.length);
-        return this.internal.snapshots.buffer.slice(i0, i1).concat(this.internal.snapshots.buffer.slice(i2, i3));
-    },
-
-    getDataSize: function()
-    {
-        return this.internal.snapshots.buffer.length;
-    },
-
-    getTimeRange: function()
-    {
-        this.internal.snapshots.buffer.length * ajk.config.tickFrequency * 1000;
-    },
+    update: function(cache, tickData) { this.internal.addDatapoint(cache, tickData); },
+    get:    function()                { return this.internal.data; },
+    clear:  function()                { this.internal.clear(); },
 };
 
 window.addEventListener('load', () => { ajk.statistics.internal.loadFromWebStorage(); return null; });

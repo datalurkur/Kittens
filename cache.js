@@ -10,7 +10,8 @@ ajk.cache = {
         [
             {
                 type: 'production',
-                postfixes: [
+                postfixes:
+                [
                     'PerTickAutoprod',
                     'PerTickBase',
                     'PerTickProd',
@@ -19,6 +20,7 @@ ajk.cache = {
                     'RatioGlobal',
                     'Ratio',
                 ],
+                ignore: [],
             },
             {
                 type: 'consumption',
@@ -29,12 +31,17 @@ ajk.cache = {
                     'PerTick',
                     'Consumption',
                 ],
+                ignore:
+                [
+                    'reactorThoriumPerTick'
+                ],
             },
             {
                 type: 'storage',
                 postfixes: [
                     'Max',
                 ],
+                ignore: [],
             },
         ],
 
@@ -127,6 +134,7 @@ ajk.cache = {
         {
             var typeData = this.effectTypeData[typeIndex];
             var table = this.effectCache[typeData.type];
+            if (typeData.ignore.indexOf(effect) != -1) { return true; }
             for (var i = 0; i < typeData.postfixes.length; ++i)
             {
                 var index = effect.indexOf(typeData.postfixes[i]);
@@ -443,6 +451,10 @@ ajk.cache = {
 
     getResourceData: function(resourceName)
     {
+        if (!this.internal.resourceCache.hasOwnProperty(resourceName))
+        {
+            this.internal.log.error('No cache data for resource ' + resourceName);
+        }
         return this.internal.resourceCache[resourceName];
     },
 

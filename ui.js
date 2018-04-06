@@ -120,11 +120,16 @@ ajk.ui = {
             'color': 'beige',
             'on'   : true,
         },
+        'energy':
+        {
+            'color': 'yellow',
+            'on'   : false,
+        },
     },
 
     graphOptions:
     {
-        interpolation: 'monotone',
+        interpolation: 'step-after',
         interpolationOptions: ['monotone', 'cardinal', 'step-after', 'linear'],
     },
 
@@ -227,15 +232,10 @@ ajk.ui = {
 
     updateGraphData: function()
     {
-        this.log.debug('Updating graph data');
-        var data = ajk.statistics.getAll();
-
-        // Used for multiple graphs
-        var resourceList = Object.keys(this.resourceInfo);
-        var timeDomain = d3.extent(data.map(d => d.time));
+        var data = ajk.statistics.get();
 
         // Resource toggles
-        var toggles = d3.select('.resourceToggleContainer').selectAll('div').data(resourceList);
+        var toggles = d3.select('.resourceToggleContainer').selectAll('div').data(data.allResources);
         toggles.exit().remove();
         var newToggles = toggles.enter().append('div');
 
@@ -245,48 +245,65 @@ ajk.ui = {
             .on('click', d => this.toggleGraphResource(d));
         newToggles.append('label')
             .attr('for', d => d)
-            .style('color', d => this.resourceInfo[d].color)
+            .style('color', (d) => {
+                return this.resourceInfo[d].color;
+            })
             .text(d => d);
 
         toggles.selectAll('div input')
             .property('checked', d => this.resourceInfo[d].on);
 
-        var filteredResourceList = resourceList.filter(r => this.resourceInfo[r].on);
+        var filteredResources = data.allResources.filter(r => this.resourceInfo[r].on);
 
         // Per tick graph
-        var perTickLines = filteredResourceList.map((r) => {
-            var values = data.map((s) => {
-                return [s.time, s.resources[r].perTick];
-            });
-            var valueDomain = d3.extent(values.map(v => v[1]));
-            return {
-                label:       r,
-                color:       this.resourceInfo[r].color,
-                values:      values,
-                lastValue:   values[values.length - 1],
-                valueDomain: valueDomain
-            };
-        }).filter(r => r.valueDomain[0] != 0 || r.valueDomain[1] != 0);
-        var yDomain = d3.extent(perTickLines.map(v => v.valueDomain).reduce((a,v) => { return a.concat(v); }, []));
         var perTickData = {
             title: 'net resources / second',
             interpolation: 'step-after',
             padding: 64,
             height: 512,
-            timeDomain: timeDomain,
-            yDomain: yDomain,
+            timeDomain: data.timeDomain,
+            yDomain: [0, 0],
             xTicks: 7,
             yTicks: 9,
             yTickFormat: function(d) { return d3.format('.2s')(d * 5) + ' / s'; },
-            lines: perTickLines,
+            lines: [],
+            labels: [],
             interpolation: this.graphOptions.interpolation
         };
+        filteredResources.forEach((r) => {
+            // Update y domain
+            perTickData.yDomain = [
+                Math.min(perTickData.yDomain[0], data.perTickResources[r].yDomain[0]),
+                Math.max(perTickData.yDomain[1], data.perTickResources[r].yDomain[1]),
+            ];
+
+            // Update lines
+            var color = this.resourceInfo[r].color;
+            var sets = data.perTickResources[r].sets;
+            sets.forEach((s) => {
+                perTickData.lines.push({
+                    color:  color,
+                    values: s.values,
+                });
+            });
+
+            // Update labels
+            if (sets.length == 0) { return; }
+            var lastSet   = sets[sets.length - 1];
+            if (lastSet.values.length == 0) { return; }
+            var lastValue = lastSet.values[lastSet.values.length - 1];
+            perTickData.labels.push({
+                label: r,
+                color: color,
+                y:     lastValue[1]
+            });
+        });
+
         this.cachedGraphData = [perTickData];
     },
 
     buildGraphs: function()
     {
-        this.log.debug('Rebuilding graphs');
         ajk.graphFactory.buildGraphs('.graphContainer', this.cachedGraphData);
     },
 
@@ -329,7 +346,7 @@ ajk.ui = {
         $('#backupSignoutButton').click(function() { ajk.backup.handleSignOutClick(); });
 
         $('#clearStatisticsButton').click(() => {
-            ajk.statistics.internal.clearSnapshots();
+            ajk.statistics.clear();
             this.updateGraphData();
             this.buildGraphs();
         });
@@ -350,18 +367,21 @@ ajk.ui = {
 
     refresh: function()
     {
+        var timerData = ajk.timer.start('UI Refresh');
+        if (this.modalDialogOpen)
+        {
+            this.updateGraphData();
+            timerData.interval('Collect Graph Data');
+            this.buildGraphs();
+            timerData.interval('Build Graphs');
+        }
         $('#simulateToggle').attr('checked', ajk.base.simulating);
         $('#tickToggle').attr('checked', ajk.config.ticking);
         $('#logLevelSelect').attr('value', ajk.log.internal.logLevel);
         $('#detailSuccessToggle').attr('checked', ajk.config.detailedLogsOnSuccess);
         $('#detailErrorToggle').attr('checked', ajk.config.detailedLogsOnError);
         $('#backupToggle').attr('checked', ajk.config.performBackups);
-
-        if (this.modalDialogOpen)
-        {
-            this.updateGraphData();
-            this.buildGraphs();
-        }
+        timerData.end('Update Toggle States');
     },
 
     refreshPriorities: function(itemData, analysisData)

@@ -34,10 +34,20 @@ ajk.core = {
 
         priorityResourceDemand: {},
 
+        events: [],
+
         checkForObservationEvent: function()
         {
             var btn = ajk.base.getObserveButton();
             if (btn != null) { btn.click(); }
+        },
+
+        addEvent: function(type, data)
+        {
+            this.events.push({
+                type: type,
+                data: data
+            });
         },
 
         rebuildItemList: function()
@@ -221,6 +231,28 @@ ajk.core = {
 
         inDemand: function(resourceName) { return this.priorityResourceDemand.hasOwnProperty(resourceName) && this.priorityResourceDemand[resourceName] > 0; },
 
+        craftUpTo: function(craftName, amount)
+        {
+            var craftAllCount = ajk.base.getCraftAllAmount(craftName);
+            var actualCraftCount = Math.min(craftAllCount, amount);
+            if (actualCraftCount == 0) { return true; }
+            if (ajk.base.craft(craftName, actualCraftCount))
+            {
+                var resultAmount = actualCraftCount * ajk.base.getCraftRatio();
+                this.log.detail('Crafted ' + resultAmount + ' ' + craftName);
+                this.addEvent('craft', {
+                    name:   craftName,
+                    amount: resultAmount
+                });
+                return true;
+            }
+            else
+            {
+                this.log.error('Failed to craft ' + actualCraftCount + ' ' + craftName);
+                return false;
+            }
+        },
+
         pursuePriority: function()
         {
             this.priorityResourceDemand = {};
@@ -235,11 +267,15 @@ ajk.core = {
                     var method = opDecision.optionData.method;
                     if (method == 'craft')
                     {
-                        ajk.base.craft(opDecision.optionData.extraData.name, opDecision.actionCount);
+                        this.craftUpTo(opDecision.optionData.extraData.name, opDecision.actionCount);
                     }
                     else if (method == 'trade')
                     {
-                        ajk.base.trade(opDecision.optionData.extraData, opDecision.actionCount);
+                        var resources = ajk.base.trade(opDecision.optionData.extraData, opDecision.actionCount);
+                        this.addEvent('trade', {
+                            race:   opDecision.optionData.extraData.name,
+                            result: resources
+                        });
                     }
                     else if (method == 'purchase' || method == 'explore')
                     {
@@ -253,6 +289,7 @@ ajk.core = {
                             else
                             {
                                 this.log.info(method + 'd ' + opDecision.optionData.identifier);
+                                this.addEvent(method, {item: opDecision.optionData.identifier});
                                 this.successes += 1;
                             }
                         }
@@ -289,10 +326,7 @@ ajk.core = {
                     var craftPrice = this.cache.getResourceCostForCraft(rName, craftName);
                     var numCrafts = Math.ceil(amountToConvert / craftPrice);
                     this.log.debug('Converting ' + amountToConvert + ' ' + rName + 's into ' + craftName);
-                    if (!ajk.base.craft(craftName, numCrafts))
-                    {
-                        this.log.error('Resource conversion failed');
-                    }
+                    this.craftUpTo(craftName, numCrafts);
                 }
             }
 
@@ -342,6 +376,7 @@ ajk.core = {
         unsafeTick: function()
         {
             var timerData = ajk.timer.start('Tick Execution');
+            this.events = [];
 
             var doRebuild = this.cacheNeedsUpdate();
             this.year = ajk.base.getYear();
