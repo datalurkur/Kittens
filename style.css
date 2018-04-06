@@ -123,14 +123,20 @@ span.ajkAdjustment.negative {
     margin-right: 50px;
 }
 
-.graphFill
+.boundedTable
+{
+    width: 100%;
+    table-layout: fixed;
+}
+
+.graphContainer
 {
     width: 100%;
 }
 
 svg .title {
     fill: #fff;
-    font-size: 30px;
+    font-size: 18px;
     font-family: Arial;
 }
 

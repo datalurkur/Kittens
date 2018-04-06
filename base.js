@@ -85,7 +85,41 @@ var ajk = {
         hunt: function(hunts)
         {
             if (this.simulate) { return; }
-            gamePage.village.huntMultiple(hunts);
+            if (ajk.config.useAccurateHunting)
+            {
+                return this.huntHack(hunts);
+            }
+            else
+            {
+                gamePage.village.huntMultiple(hunts);
+                return {};
+            }
+        },
+        huntHack: function(squads)
+        {
+            var village = gamePage.village;
+
+            // This is copied directly from the kittens code's village module
+            // With this behavior copied, we can directly return the results of hunting for easy analysis
+            // In the kittens code, village == this
+            // ----------------------------------------------------------------------------------------
+            var mpower = village.game.resPool.get("manpower");
+            squads = Math.min(squads, Math.floor(mpower.value / 100));
+
+            if (squads < 1) { return; }
+
+            village.game.resPool.addResEvent("manpower", -(squads * 100));
+
+            var totalYield = null;
+
+            for (var i = squads - 1; i >= 0; i--)
+            {
+                totalYield = village.sendHuntersInternal(totalYield);
+            }
+            village.gainHuntRes(totalYield, squads);
+            // ----------------------------------------------------------------------------------------
+
+            return totalYield;
         },
         praise: function()
         {
@@ -131,15 +165,17 @@ var ajk = {
 
 // TODO - parse config at launch and behave accordingly
 ajk.config = {
-    performBackup:         false,
-    detailedLogsOnError:   false,
-    detailedLogsOnSuccess: false,
-    ticking:               false,
+    performBackup:           false,
+    detailedLogsOnError:     false,
+    detailedLogsOnSuccess:   false,
+    ticking:                 false,
 
-    tickFrequency: 10,
+    tickFrequency:           10,
     catpowerConversionRatio: 0.75,
-    conversionRatio: 0.1,
-    conversionMaxRatio: 0.97,
+    conversionRatio:         0.1,
+    conversionMaxRatio:      0.97,
+
+    useAccurateHunting:      true, // Use copied source in order to get more data about hunting results
 };
 
 ajk.util = {

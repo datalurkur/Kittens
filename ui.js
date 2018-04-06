@@ -131,7 +131,8 @@ ajk.ui = {
     panelState: {},
 
     modalDialogOpen: false,
-    graphs: {},
+    cachedGraphData: [],
+    resizeListener:  null,
 
     // Callbacks
     togglePanel: function(panelHeader)
@@ -147,7 +148,8 @@ ajk.ui = {
         this.modalDialogOpen = visible;
         if (visible)
         {
-            this.updateGraphs();
+            this.updateGraphData();
+            this.buildGraphs();
         }
         $('#ajkModalWindow').css('display', visible ? 'block' : 'none');
     },
@@ -155,7 +157,8 @@ ajk.ui = {
     toggleGraphResource: function(resource)
     {
         this.resourceInfo[resource].on = !this.resourceInfo[resource].on;
-        this.updateGraphs();
+        this.updateGraphData();
+        this.buildGraphs();
     },
 
     convertTicksToTimeString: function(ticks)
@@ -222,118 +225,69 @@ ajk.ui = {
         });
     },
 
-    buildGraphs: function()
+    updateGraphData: function()
     {
-        var width = 1200;
-        var height = 1024;
-
-        var formatter = function(d) { return d3.format('.2s')(d * 5 * 60) + ' / m'; };
-
-        var gData = ajk.graphFactory.buildGraph('resourceProductionGraph', 'Resource Production', width, height, 11, formatter, 1);
-        this.graphs.resourcePerTickGraph = gData;
-    },
-
-    updateGraphs: function()
-    {
+        this.log.debug('Updating graph data');
         var data = ajk.statistics.getAll();
 
+        // Used for multiple graphs
+        var resourceList = Object.keys(this.resourceInfo);
         var timeDomain = d3.extent(data.map(d => d.time));
-        var allResources = Object.keys(this.resourceInfo).map((r) => {
-            var values = data.map((s) => {
-                return {
-                    time:         s.time,
-                    resourceData: s.resources[r]
-                };
-            });
-            return {
-                id:          r,
-                color:       this.resourceInfo[r].color,
-                values:      values,
-                lastValue:   values[values.length - 1]
-            };
-        });
 
-        var toggles = d3.select('.resourceToggleContainer').selectAll('div').data(allResources);
-
+        // Resource toggles
+        var toggles = d3.select('.resourceToggleContainer').selectAll('div').data(resourceList);
+        toggles.exit().remove();
         var newToggles = toggles.enter().append('div');
+
         newToggles.append('input')
             .attr('type', 'checkbox')
-            .attr('id', d => d.id)
-            .on('click', d => this.toggleGraphResource(d.id));
-        newToggles.append('label').attr('for', d => d.id).style('color', d => d.color).text(d => d.id);
-
-        toggles.exit().remove();
+            .attr('id', d => d)
+            .on('click', d => this.toggleGraphResource(d));
+        newToggles.append('label')
+            .attr('for', d => d)
+            .style('color', d => this.resourceInfo[d].color)
+            .text(d => d);
 
         toggles.selectAll('div input')
-            .property('checked', d => this.resourceInfo[d.id].on);
+            .property('checked', d => this.resourceInfo[d].on);
 
-        this.updateResourcePerTickGraph(timeDomain, allResources);
+        var filteredResourceList = resourceList.filter(r => this.resourceInfo[r].on);
+
+        // Per tick graph
+        var perTickLines = filteredResourceList.map((r) => {
+            var values = data.map((s) => {
+                return [s.time, s.resources[r].perTick];
+            });
+            var valueDomain = d3.extent(values.map(v => v[1]));
+            return {
+                label:       r,
+                color:       this.resourceInfo[r].color,
+                values:      values,
+                lastValue:   values[values.length - 1],
+                valueDomain: valueDomain
+            };
+        }).filter(r => r.valueDomain[0] != 0 || r.valueDomain[1] != 0);
+        var yDomain = d3.extent(perTickLines.map(v => v.valueDomain).reduce((a,v) => { return a.concat(v); }, []));
+        var perTickData = {
+            title: 'net resources / second',
+            interpolation: 'step-after',
+            padding: 64,
+            height: 512,
+            timeDomain: timeDomain,
+            yDomain: yDomain,
+            xTicks: 7,
+            yTicks: 9,
+            yTickFormat: function(d) { return d3.format('.2s')(d * 5) + ' / s'; },
+            lines: perTickLines,
+            interpolation: this.graphOptions.interpolation
+        };
+        this.cachedGraphData = [perTickData];
     },
 
-    updateResourcePerTickGraph: function(timeDomain, allResources)
+    buildGraphs: function()
     {
-        // Resource production
-        var perTickResources = allResources.map((r) => {
-            if (!this.resourceInfo[r.id].on) { return null; }
-
-            if (r.values.length == 0) { return null; }
-
-            var extent = d3.extent(r.values.map(v => v.resourceData.perTick).reduce((a,v) => { return a.concat(v); }, []));
-            if (extent[0] == 0 && extent[1] == 0) { return null; }
-            r.perTickExtent = extent;
-
-            return r;
-        }).filter(r => r != null);
-
-        var rptG = this.graphs.resourcePerTickGraph;
-        var yScalePadding = 0.05;
-        var xDomain = timeDomain;
-        var yDomain = d3.extent(
-            perTickResources.map(function(r) { return r.perTickExtent; }).reduce(function(a,v) { return a.concat(v); }, [])
-        );
-
-        var yRange = yDomain[1] - yDomain[0];
-        yDomain[0] -= (yRange * yScalePadding);
-        yDomain[1] += (yRange * yScalePadding);
-        rptG.updateDomain(xDomain, yDomain);
-
-        var line = d3.svg.line()
-            .x((d) => { return rptG.xScale(d.time);                 })
-            .y((d) => { return rptG.yScale(d.resourceData.perTick); })
-            .interpolate(this.graphOptions.interpolation);
-
-        // Get all elements
-        var resourceNode = rptG.svg.selectAll('g.resource')
-            .data(perTickResources);
-
-        // Create new elements
-        var newResources = resourceNode.enter().append('g')
-            .attr('class', 'resource');
-        newResources.append('path')
-            .attr('class', 'line');
-        newResources.append('text')
-            .attr('class', 'lineLabel');
-
-        // Remove old elements
-        resourceNode.exit().remove();
-
-        // Update existing elements
-        resourceNode.select('path')
-            .attr('d', function(d) { return line(d.values); })
-            .style('stroke', function(d) { return d.color; })
-            .attr('transform', null);
-            /*
-            // TODO - Figure out how to animate the graph prettily
-            .transition()
-            .duration(ajk.config.tickFrequency * 1000)
-            .attr('transform', 'translate(' + rptG.xScale(timeDomain[0] - (ajk.config.tickFrequency * 1000)) + ', 0)');
-            */
-        resourceNode.select('text')
-            .attr('transform', (d) => {
-                return 'translate(' + (rptG.x1 + 5) + ',' + (rptG.yScale(d.lastValue.resourceData.perTick) + 5) + ')';
-            })
-            .style('fill', function(d) { return d.color; })
-            .text(function(d) { return d.id; });
+        this.log.debug('Rebuilding graphs');
+        ajk.graphFactory.buildGraphs('.graphContainer', this.cachedGraphData);
     },
 
     init: function()
@@ -376,7 +330,8 @@ ajk.ui = {
 
         $('#clearStatisticsButton').click(() => {
             ajk.statistics.internal.clearSnapshots();
-            this.updateGraphs();
+            this.updateGraphData();
+            this.buildGraphs();
         });
 
         // Register events for the modal window
@@ -389,7 +344,8 @@ ajk.ui = {
             }
         });
 
-        this.buildGraphs();
+        this.resizeListener = new ResizeObserver(() => { this.buildGraphs(); });
+        this.resizeListener.observe(d3.select('.graphContainer').node());
     },
 
     refresh: function()
@@ -401,7 +357,11 @@ ajk.ui = {
         $('#detailErrorToggle').attr('checked', ajk.config.detailedLogsOnError);
         $('#backupToggle').attr('checked', ajk.config.performBackups);
 
-        if (this.modalDialogOpen) { this.updateGraphs(); }
+        if (this.modalDialogOpen)
+        {
+            this.updateGraphData();
+            this.buildGraphs();
+        }
     },
 
     refreshPriorities: function(itemData, analysisData)

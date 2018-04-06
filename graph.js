@@ -1,112 +1,87 @@
 ajk.graphFactory = {
-    padding: 64,
-
-    buildGraph: function(parentId, title, width, height, numYTicks, yTickFormatter, powerScaling)
+    buildGraphs: function(container, graphData)
     {
-        var x0 = this.padding;
-        var x1 = width - (this.padding * 3);
-        var y0 = height - this.padding;
-        var y1 = this.padding;
+        var container = d3.select(container);
+        var width = container.node().getBoundingClientRect().width;
 
-        var xScale = d3.time.scale().domain([0, 1]).range([x0, x1]);
+        if (width == 0) { return; }
 
-        var yScaleType;
-        if (powerScaling != 1)
-        {
-            yScaleType = d3.scale.pow().exponent(powerScaling);
-        }
-        else
-        {
-            yScaleType = d3.scale.linear();
-        }
-        var yScale = yScaleType.domain([0,1]).range([y0, y1]);
+        graphData.forEach((d) => {
+            d.xScale = d3.time.scale()
+                .domain(d.timeDomain)
+                .range([d.padding, width - (d.padding * 3)]);
+            var testValue = d.xScale(1522974443754);
+            var testValue2 = d.xScale(1522975428837);
+            d.yScale = d3.scale.linear()
+                .domain(d.yDomain)
+                .range([d.height - d.padding, d.padding]);
+            d.lines.forEach((l) => {
+                l.xScale  = d.xScale;
+                l.yScale  = d.yScale;
+                l.padding = d.padding;
+            });
+        });
 
-        var svg = d3.select('#' + parentId)
-            .append('svg')
-            .attr('width', width)
-            .attr('height', height);
+        var svgs = container.selectAll('svg').data(graphData);
 
-        svg.append('g')
-            .attr('class', 'x axis')
-            .attr('transform', 'translate(0, 0)');
+        // Remove old
+        svgs.exit().remove();
 
-        svg.append('g')
-            .attr('class', 'y axis')
-            .attr('transform', 'translate(' + (x0 - 10) + ', 0)');
+        // Create new
+        var newSVGs = svgs.enter().append('svg');
+        newSVGs.append('g').attr('class', 'x axis');
+        newSVGs.append('g').attr('class', 'y axis');
+        newSVGs.append('text').attr('class', 'title').text(d => d.title);
 
-        svg.append('text')
-            .attr('class', 'title')
-            .attr('transform', 'translate(' + ((x1 - x0) / 2) + ', ' + y1 + ')')
-            .text(title);
+        // Update SVG sizes
+        svgs.attr('width', d => width).attr('height', d => d.height);
 
-        var graphData = {
-            x0:       x0,
-            x1:       x1,
-            y0:       y0,
-            y1:       y1,
-            xScale:   xScale,
-            yScale:   yScale,
-            svg:      svg,
-            width:    width,
-            height:   height,
-            power:    powerScaling,
-            yTicks:   numYTicks,
-            yForm:    yTickFormatter,
+        // Update axes
+        var xAxes = svgs.select('g.x.axis');
+        xAxes.attr('transform', d => 'translate(0, ' + (d.height - d.padding) + ')')
+        xAxes.each(function(d) {
+            d3.svg.axis()
+                .scale(d.xScale)
+                .ticks(d.xTicks)
+                .tickFormat(d3.time.format('%H:%M'))
+                .orient('bottom')(d3.select(this));
+        });
+        var yAxes = svgs.select('g.y.axis');
+        yAxes.attr('transform', d => 'translate(' + (d.padding - 10) + ', 0)');
+        yAxes.each(function(d) {
+            d3.svg.axis()
+                .scale(d.yScale)
+                .ticks(d.yTicks)
+                .tickFormat(d.yTickFormat)
+                .orient('left')(d3.select(this));
+        });
 
-            createAxes: function()
-            {
-                var xAxis = d3.svg.axis()
-                    .scale(this.xScale)
-                    .ticks(10)
-                    .tickFormat(d3.time.format('%H:%M'))
-                    .orient('bottom');
+        // Update title position
+        svgs.select('text.title').attr('transform', d => 'translate(' + d.padding + ', ' + (d.padding - 5) + ')');
 
-                this.svg.select('g.x.axis')
-                    .attr('transform', 'translate(' + 0 + ',' + this.yScale(0) + ')')
-                    .call(xAxis);
+        // Update lines
+        var lineGroups = svgs.selectAll('g.lineGroup').data(d => d.lines);
+        lineGroups.exit().remove();
+        var newLineGroups = lineGroups.enter().append('g')
+            .attr('class', 'lineGroup');
 
-                var yAxis = d3.svg.axis()
-                    .scale(this.yScale)
-                    .ticks(this.yTicks)
-                    .tickFormat(this.yForm)
-                    .orient('left');
+        newLineGroups.append('path')
+            .attr('class', 'line');
+        newLineGroups.append('text')
+            .attr('class', 'lineLabel');
 
-                if (this.power != 1)
-                {
-                    var ticks = [];
-                    var min = this.yScale.domain()[0];
-                    var max = this.yScale.domain()[1];
-                    var minPow = -Math.pow(-min, this.power);
-                    var maxPow = Math.pow(max, this.power);
-                    var powRange = maxPow - minPow;
-                    for (var i = 0; i < this.yTicks; ++i)
-                    {
-                        var iRatio = i / (this.yTicks - 1);
-                        var powVal = iRatio * powRange + minPow;
-                        var realVal = Math.sign(powVal) * Math.pow(Math.abs(powVal), 1 / this.power);
-                        ticks.push(realVal);
-                    }
-                    yAxis.tickValues(ticks);
-                }
+        lineGroups.select('path.line')
+            .attr('d', (d) => {
+                return d3.svg.line()
+                    .x(v => d.xScale(v[0]))
+                    .y(v => d.yScale(v[1]))
+                    .interpolate(d.interpolation)(d.values);
+            })
+            .style('stroke', d => d.color);
 
-                this.svg.select('g.y.axis')
-                    .attr("transform", "translate(" + (this.x0 - 10) + ", 0)")
-                    .call(yAxis);
-            },
-
-            updateDomain: function(xDomain, yDomain)
-            {
-                // Always include 0 in the y domain
-                var cleanedYDomain = d3.extent(yDomain.concat([0]));
-                this.xScale.domain(xDomain);
-                this.yScale.domain(cleanedYDomain);
-
-                this.createAxes();
-            },
-        };
-
-        graphData.createAxes();
-
-        return graphData;
-    }
+        lineGroups.select('text.lineLabel')
+            .attr('transform', d => 'translate(' + (width - (d.padding * 3) + 5) + ', ' + (d.yScale(d.lastValue[1]) + 4) + ')')
+            .text(d => d.label)
+            .style('fill', d => d.color);
+    },
 }
