@@ -67,7 +67,7 @@ ajk.cache = {
         craftCache:
         {
             costToCrafts: {},
-            craftToCost:  {},
+            craftData:    {},
         },
 
         huntingCache:
@@ -91,9 +91,9 @@ ajk.cache = {
 
             var baseResource = ajk.base.getResource(resourceName);
             if (baseResource.unlocked) { return true; }
-            if (this.craftCache.craftToCosts.hasOwnProperty(baseResource))
+            if (this.craftCache.craftData.hasOwnProperty(baseResource) && this.craftCache.craftData[baseResource].unlocked)
             {
-                for (var resource in this.craftCache.craftToCosts[baseResource])
+                for (var resource in this.craftCache.craftData[baseResource].costs)
                 {
                     if (!this.resourceUnlocked(resource)) { return false;}
                 }
@@ -161,7 +161,7 @@ ajk.cache = {
             var amount = saleData.value * ajk.base.getTradeRatio();
             var chance = saleData.chance;
 
-            if (race.name == 'zebras' && resourceName == 'titanium')
+            if (race.name == 'zebras' && saleData.name == 'titanium')
             {
                 // Special rules for this
                 var numShips = ajk.base.getResource('ship').value;
@@ -234,19 +234,19 @@ ajk.cache = {
 
         cacheCraftData: function()
         {
-            this.craftCache.costToCrafts   = {};
-            this.craftCache.craftToCosts   = {};
+            this.craftCache.costToCrafts = {};
+            this.craftCache.craftData    = {};
 
             ajk.base.getAllCrafts().forEach((craft) => {
-                if (craft.unlocked)
-                {
-                    this.log.detail('Caching data for craft ' + craft.name);
-                    this.craftCache.craftToCosts[craft.name] = {};
-                    craft.prices.forEach((price) => {
-                        this.craftCache.craftToCosts[craft.name][price.name] = price.val;
-                        ajk.util.ensureKey(this.craftCache.costToCrafts, price.name, {})[craft.name] = price.val;
-                    });
-                }
+                this.log.detail('Caching data for craft ' + craft.name);
+                this.craftCache.craftData[craft.name] = {
+                    unlocked: craft.unlocked,
+                    costs:    {}
+                };
+                craft.prices.forEach((price) => {
+                    this.craftCache.craftData[craft.name].costs[price.name] = price.val;
+                    ajk.util.ensureKey(this.craftCache.costToCrafts, price.name, {})[craft.name] = price.val;
+                });
             });
         },
 
@@ -263,6 +263,11 @@ ajk.cache = {
                     max:       (res.maxValue == 0) ? Infinity : Math.max(0, res.maxValue - buffer),
                 };
             });
+            this.resourceCache['energy'] = {
+                unlocked: true,
+                buffer:   0,
+                max:      Infinity
+            };
             this.cacheResourcePoolData();
         },
 
@@ -274,6 +279,10 @@ ajk.cache = {
                 rData.perTick   = this.getNetProductionOf(resource);
                 rData.available = Math.max(0, ajk.base.getResource(resource).value - rData.buffer);
             }
+            // Haaaack
+            var energy = this.getNetProductionOf('energy');
+            this.resourceCache['energy'].perTick = energy;
+            this.resourceCache['energy'].available = energy;
         },
 
         cacheHuntingData: function()
@@ -450,6 +459,11 @@ ajk.cache = {
     getResourceCostForCraft: function(resourceName, craftName)
     {
         return this.internal.craftCache.costToCrafts[resourceName][craftName];
+    },
+
+    isCraftUnlocked: function(craftName)
+    {
+        return this.internal.craftCache.craftData[craftName].unlocked;
     },
 
     getExplorationData: function()

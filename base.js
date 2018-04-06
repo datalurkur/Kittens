@@ -132,7 +132,7 @@ var ajk = {
 // TODO - parse config at launch and behave accordingly
 ajk.config = {
     performBackup:         false,
-    detailedLogsOnError:   true,
+    detailedLogsOnError:   false,
     detailedLogsOnSuccess: false,
     ticking:               false,
 

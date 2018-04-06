@@ -182,7 +182,7 @@ ajk.decisionTreeFactory = {
                     this.log.trace('Updating decisions for option ' + this.optionData.method);
                     this.log.indent();
 
-                    if (this.parentOption == null)
+                    if (this.parentResource == null)
                     {
                         this.actionCount = 1;
                         this.consumption = {};

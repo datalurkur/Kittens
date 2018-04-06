@@ -87,6 +87,7 @@ ajk.core = {
                 var mData = pItems[i].model.metadata;
                 if (typeof mData === 'undefined')        { continue; }
                 if (!mData.unlocked || (typeof mData.researched !== 'undefined' && mData.researched)) { continue; }
+                if (mData.hasOwnProperty('noStackable') && mData.noStackable && mData.val > 0) { continue; }
                 this.itemData[mData.name] = {
                     item:         pItems[i],
                     costData:     null,
@@ -113,47 +114,48 @@ ajk.core = {
             else
             {
                 var productionCosts    = [];
-                var purchasePriorities = [];
+                var nonProductionCosts = false;
 
-                productionCosts.push({
-                    name: 'manpower',
-                    val:  1000,
-                });
-
-                for (var costType in explorationData)
+                var costType = explorationData[0];
+                var costData = explorationData[1];
+                if (costType == 'purchase')
                 {
-                    var costData = explorationData[costType];
-                    if (costType == 'purchase')
-                    {
-                        purchasePriorities.push(costData);
-                    }
-                    else if (costType == 'accumulate')
-                    {
-                        productionCosts.push({
-                            name: costData[0],
-                            val:  costData[1],
-                        });
-                    }
-                    else if (costType == 'storage')
-                    {
-                        storagePriorities.push(costData);
-                    }
+                    nonProductionCosts = true;
+                    // TODO - Pipe purchase priorites to analysis
+                }
+                else if (costType == 'storage')
+                {
+                    nonProductionCosts = true;
+                    // TODO - Pipe purchase priorites to analysis
+                }
+                else if (costType == 'accumulate')
+                {
+                    productionCosts.push({
+                        name: costData[0],
+                        val:  costData[1],
+                    });
                 }
 
-                // God, this whole exploration thing is just such a mess
-                ajk.base.switchToTab(dipTab);
-                var exploreItem = dipTab.exploreBtn;
-                ajk.base.switchToTab(null);
+                if (!nonProductionCosts)
+                {
+                    productionCosts.push({
+                        name: 'manpower',
+                        val:  1000,
+                    });
 
-                var costData = ajk.costDataFactory.buildCustomCostData(this.cache, 'explore', 'trade route', productionCosts, exploreItem);
+                    // God, this whole exploration thing is just such a mess
+                    ajk.base.switchToTab(dipTab);
+                    var exploreItem = dipTab.exploreBtn;
+                    ajk.base.switchToTab(null);
 
-                this.itemData['tradeRouteDiscovery'] = {
-                    item:         exploreItem,
-                    costData:     costData,
-                    decisionTree: null,
-                };
+                    var costData = ajk.costDataFactory.buildCustomCostData(this.cache, 'explore', 'trade route', productionCosts, exploreItem);
 
-                // TODO - Pipe purchase priorites to analysis
+                    this.itemData['tradeRouteDiscovery'] = {
+                        item:         exploreItem,
+                        costData:     costData,
+                        decisionTree: null,
+                    };
+                }
             }
         },
 
@@ -278,11 +280,11 @@ ajk.core = {
             for (var rName in this.resourceConversions)
             {
                 var rData = this.cache.getResourceData(rName);
-                if (!rData.unlocked) { continue; }
+                var craftName = this.resourceConversions[rName];
+                if (!rData.unlocked || !this.cache.isCraftUnlocked(craftName)) { continue; }
 
                 if (rData.available / rData.max >= ajk.config.conversionMaxRatio)
                 {
-                    var craftName = this.resourceConversions[rName];
                     var amountToConvert =  rData.max * ajk.config.conversionRatio;
                     var craftPrice = this.cache.getResourceCostForCraft(rName, craftName);
                     var numCrafts = Math.ceil(amountToConvert / craftPrice);

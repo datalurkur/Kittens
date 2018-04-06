@@ -117,9 +117,15 @@ span.ajkAdjustment.negative {
     cursor: pointer;
 }
 
-.graphToggleContainer
+.resourceToggleContainer
 {
     width: 200px;
+    margin-right: 50px;
+}
+
+.graphFill
+{
+    width: 100%;
 }
 
 svg .title {
