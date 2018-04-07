@@ -129,9 +129,29 @@ span.ajkAdjustment.negative {
     table-layout: fixed;
 }
 
-.graphContainer
+div.graphContainer
 {
     width: 100%;
+}
+
+div#perTickGraph
+{
+    width: 100%;
+    height: 512px;
+}
+
+div#purchasesGraph
+{
+    width: 100%;
+    height: 256px;
+}
+
+/* Graph styles */
+text.tooltip {
+    font-size: 12px;
+    font-family: Arial;
+    fill: #fff;
+    pointer-events: none;
 }
 
 svg .title {
@@ -140,7 +160,6 @@ svg .title {
     font-family: Arial;
 }
 
-/* Graph styles */
 path.line {
     fill: none;
     stroke-width: 1.5px;
@@ -162,4 +181,11 @@ text.lineLabel {
     fill: #fff;
     font-size: 12px;
     font-family: Arial;
+}
+
+circle.eventBubble {
+    radius: 8px;
+    stroke: steelblue;
+    stroke-width: 3px;
+    fill-opacity: 0.1;
 }

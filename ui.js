@@ -263,23 +263,29 @@ ajk.ui = {
         toggles.selectAll('div input')
             .property('checked', d => this.resourceInfo[d].on);
 
+
         var filteredResources = data.allResources.filter(r => this.resourceInfo[r].on);
 
         // Per tick graph
         var perTickData = {
-            title: 'net resources / second',
-            interpolation: 'step-after',
-            padding: [this.graphOptions.leftPadding, this.graphOptions.rightPadding, 64, 64],
-            height: 512,
+            title:         'net resources / second',
+            padding:        [this.graphOptions.leftPadding, this.graphOptions.rightPadding, 32, 32],
+            height:         512,
             baseTimeDomain: data.timeDomain,
-            timeDomain: data.timeDomain,
-            yDomain: [0, 0],
-            xTicks: 7,
-            yTicks: 9,
-            yTickFormat: function(d) { return d3.format('.2s')(d * 5) + ' / s'; },
-            lines: [],
-            labels: [],
-            interpolation: this.graphOptions.interpolation
+            xTicks:         7,
+            type:           'lineGraph',
+            parent:         '#perTickGraph',
+
+            // LineGraph Specific
+            yTicks:         9,
+            interpolation:  this.graphOptions.interpolation,
+            yTickFormat:    function(d) { return d3.format('.2s')(d * 5) + ' / s'; },
+
+            // Computed
+            yDomain:        [0, 0],
+            lines:          [],
+            labels:         [],
+            timeDomain:     data.timeDomain,
         };
         filteredResources.forEach((r) => {
             // Update y domain
@@ -309,8 +315,23 @@ ajk.ui = {
                 y:     lastValue[1]
             });
         });
+        var eventData = {
+            title:          'event log',
+            padding:        [this.graphOptions.leftPadding, this.graphOptions.rightPadding, 128, 64],
+            height:         128,
+            baseTimeDomain: data.timeDomain,
+            xTicks:         7,
+            type:           'eventGraph',
+            parent:         '#purchasesGraph',
 
-        this.cachedGraphData = [perTickData];
+            // EventGraph Specific
+            events:         data.purchases,
+
+            // Computed
+            timeDomain:     data.timeDomain,
+        };
+
+        this.cachedGraphData = [perTickData, eventData];
     },
 
     buildGraphs: function()
@@ -322,7 +343,7 @@ ajk.ui = {
                 g.baseTimeDomain[1] - (this.graphManip.rightTrim * range)
             ];
         });
-        ajk.graphFactory.buildGraphs('.graphContainer', this.cachedGraphData);
+        ajk.graphFactory.buildGraphs(this.cachedGraphData);
     },
 
     zoomGraphs: function(wheelEvent)
@@ -332,8 +353,7 @@ ajk.ui = {
         var positionX = (wheelEvent.originalEvent.x - this.graphOptions.leftPadding - targetBounds.x) / (targetBounds.width - this.graphOptions.leftPadding - this.graphOptions.rightPadding);
         var relativeZoomPosition = Math.max(0, Math.min(1, positionX));
 
-        var scrollDelta = wheelEvent.originalEvent.deltaY;
-        var zoomDelta = (scrollDelta * this.graphManip.zoomSpeed);
+        var zoomDelta = -(wheelEvent.originalEvent.deltaY * this.graphManip.zoomSpeed);
         var zoomLeft = relativeZoomPosition * zoomDelta;
         var zoomRight = zoomDelta - zoomLeft;
 

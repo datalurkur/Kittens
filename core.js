@@ -289,7 +289,7 @@ ajk.core = {
                             else
                             {
                                 this.log.info(method + 'd ' + opDecision.optionData.identifier);
-                                this.addEvent(method, {item: opDecision.optionData.identifier});
+                                this.addEvent(method, opDecision.optionData.identifier);
                                 this.successes += 1;
                             }
                         }
@@ -381,7 +381,7 @@ ajk.core = {
             var doRebuild = this.cacheNeedsUpdate();
             this.year = ajk.base.getYear();
             this.season = ajk.base.getSeason();
-            this.succeses = 0;
+            this.successes = 0;
 
             this.checkForObservationEvent();
             timerData.interval('Event Observation');
@@ -403,7 +403,6 @@ ajk.core = {
                 });
                 timerData.interval('Update Decision Trees');
             }
-            this.successes = 0;
 
             ajk.analysisModule.computeBottlenecks(this.analysisData, this.cache, this.itemData);
             timerData.interval('Bottleneck Analysis');
@@ -417,7 +416,7 @@ ajk.core = {
             //ajk.jobs.assignFreeKittens();
             timerData.interval('Job Assignment');
 
-            ajk.statistics.update(this.cache);
+            ajk.statistics.update(this.cache, this.events);
             timerData.interval('Statistics');
 
             this.refreshUI();
