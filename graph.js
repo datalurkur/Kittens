@@ -33,9 +33,7 @@ ajk.graphFactory = {
         newSVG.append('g').attr('class', 'x axis');
         newSVG.append('g').attr('class', 'y axis');
         newSVG.append('text').attr('class', 'title').text(d => d.title);
-        newSVG.append('clipPath').attr('id', 'clip')
-            .append('rect')
-                .attr('fill', 'none');
+        newSVG.append('clipPath').attr('id', 'clip').append('rect');
 
         // Update SVG size
         svg.attr('width', containerDimensions.width).attr('height', containerDimensions.height);
@@ -97,6 +95,8 @@ ajk.graphFactory = {
 
     buildEventGraph: function(graphData)
     {
+        var ttPadding = 5;
+
         var container = d3.select(graphData.parent);
         var containerDimensions = container.node().getBoundingClientRect();
 
@@ -111,14 +111,7 @@ ajk.graphFactory = {
         var newSVG = svg.enter().append('svg');
         newSVG.append('g').attr('class', 'x axis');
         newSVG.append('text').attr('class', 'title').text(d => d.title);
-        newSVG.append('clipPath').attr('id', 'clip')
-            .append('rect')
-                .attr('fill', 'none');
-        newSVG.append('text')
-            .attr('class', 'tooltip')
-            .style('opacity', 0);
-
-        var tooltip = svg.select('text.tooltip');
+        newSVG.append('clipPath').attr('id', 'clip').append('rect');
 
         // Update SVG size
         svg.attr('width', containerDimensions.width).attr('height', containerDimensions.height);
@@ -126,9 +119,9 @@ ajk.graphFactory = {
         // Update clip rect
         svg.select('clipPath#clip rect')
             .attr('width', d => (containerDimensions.width - graphData.padding[0] - graphData.padding[1]))
-            .attr('height', d => (containerDimensions.height - graphData.padding[2] - graphData.padding[3]))
+            .attr('height', d => containerDimensions.height)
             .attr('x', d => graphData.padding[0])
-            .attr('y', d => graphData.padding[2]);
+            .attr('y', d => 0);
 
         // Update axes
         var xAxes = svg.select('g.x.axis');
@@ -145,22 +138,32 @@ ajk.graphFactory = {
         // Update title position
         svg.select('text.title').attr('transform', d => 'translate(' + graphData.padding[0] + ', ' + 32 + ')');
 
-        // Update event bubbles
-        var eventBubbles = svg.selectAll('circle.eventBubble').data(d => d.events);
-        eventBubbles.exit().remove();
-        eventBubbles.enter()
-            .append('circle')
+        // Update event groups
+        var eventGroups = svg.selectAll('g.eventGroup').data(d => d.events);
+        eventGroups.exit().remove();
+        var newEventGroups = eventGroups.enter()
+            .append('g')
                 .attr('clip-path', 'url(#clip)')
-                .attr('class', 'eventBubble');
+                .attr('class', 'eventGroup');
+        newEventGroups.append('text')
+            .attr('class', 'eventLabel');
+        newEventGroups.append('circle')
+            .attr('class', 'eventBubble');
 
-        var eventLabels = svg.selectAll('text.eventLabel').data(d => d.events);
-        eventLabels.exit().remove();
-        eventLabels.enter()
-            .append('text')
-                .attr('clip-path', 'url(#clip)')
-                .attr('class', 'eventLabel');
+        // Create tooltip
+        var newTooltip = newSVG.append('g')
+            .attr('class', 'tooltip')
+            .style('opacity', 0);
+        newTooltip.append('rect')
+            .attr('class', 'tooltipContainer')
+            .attr('rx', 5)
+            .attr('ry', 5);
+        newTooltip.append('text').attr('class', 'tooltipText');
 
-        eventBubbles.attr('class', (d) => {
+        var tooltip = svg.select('g.tooltip');
+
+        // Update event group properties
+        eventGroups.selectAll('circle.eventBubble').attr('class', (d) => {
                      if (d.significance < 3) { return 'eventBubble minor'; }
                 else if (d.significance > 4) { return 'eventBubble major'; }
                 else                         { return 'eventBubble';       }
@@ -169,22 +172,40 @@ ajk.graphFactory = {
             .attr('cy', graphData.padding[3])
             .attr('r', 8)
             .on('mouseover', (d) => {
-                tooltip.attr('transform', 'translate(' + xScale(d.time) + ', ' + (graphData.padding[3] + 24) + ')')
+                var lineSpacing = 16;
+
+                tooltip.attr('transform', 'translate(' + xScale(d.time) + ', ' + (graphData.padding[3] + 16) + ')')
                     .style('opacity', 1);
 
-                var tooltipLines = tooltip.selectAll('tspan').data(d.list);
+                var tooltipText = tooltip.select('text.tooltipText')
+                    .attr('x', 0)
+                    // Couldn't explain why this offset is necessary - text and rect seem have minds of their own when it comes to what "x" and "y" mean relative to the parent node
+                    .attr('y', ttPadding + 11);
+
+                var tooltipLines = tooltipText.selectAll('tspan').data(d.list);
                 tooltipLines.exit().remove();
                 tooltipLines.enter().append('tspan');
 
-                tooltipLines.text(e => e)
-                    .attr('x', '0px')
-                    .attr('dy', (e,i) => { return (i * 16) + 'px'; });
+                tooltipLines.text(e => e[0])
+                    .attr('class', (e) => {
+                             if (e[1] < 3) { return 'minor';  }
+                        else if (e[1] > 4) { return 'major';  }
+                        else               { return 'normal'; }
+                    })
+                    .attr('x', ttPadding + 'px')
+                    .attr('dy', (e,i) => { return ((i == 0) ? 0 : lineSpacing) + 'px'; });
+
+                tooltip.select('rect.tooltipContainer')
+                    .attr('x', 0)
+                    .attr('y', 0)
+                    .attr('width',  tooltipText.node().getBBox().width + (ttPadding * 2))
+                    .attr('height', tooltipText.node().getBBox().height + (ttPadding * 2));
             })
             .on('mouseout', (d) => {
-                tooltip.transition().duration(200).style('opacity', 0);
+                tooltip.style('opacity', 0);
             });
 
-        eventLabels.text(d => d.label)
-            .attr('transform', d => 'translate(' + xScale(d.time) + ', ' + (graphData.padding[3] + 24) + ') rotate(90)');
+        eventGroups.selectAll('text.eventLabel').text(d => d.label)
+            .attr('transform', d => 'translate(' + (xScale(d.time) - 3) + ', ' + (graphData.padding[3] + 16) + ') rotate(90)');
     },
 }

@@ -147,11 +147,30 @@ div#purchasesGraph
 }
 
 /* Graph styles */
-text.tooltip {
+g.tooltip {
+    pointer-events: none;
+}
+
+rect.tooltipContainer {
+    fill: #000;
+}
+
+text.tooltipText {
     font-size: 12px;
     font-family: Arial;
     fill: #fff;
-    pointer-events: none;
+}
+
+text.tooltipText tspan.normal {
+    fill: steelblue;
+}
+
+text.tooltipText tspan.minor {
+    fill: #fff;
+}
+
+text.tooltipText tspan.major {
+    fill: crimson;
 }
 
 svg .title {
@@ -170,6 +189,16 @@ text.lineLabel {
     font-family: Arial;
 }
 
+text.eventLabel {
+    font-size: 12px;
+    font-family: Arial;
+    fill: #fff;
+}
+
+clipPath.clip rect {
+    fill: none;
+}
+
 .axis path,
 .axis line {
     fill: none;
@@ -184,16 +213,19 @@ text.lineLabel {
 }
 
 circle.eventBubble {
-    radius: 3px;
+    r: 5px;
     stroke: steelblue;
+    fill: steelblue;
 }
 
 circle.eventBubble.minor {
-    radius: 2px;
+    r: 3px;
     stroke: #fff;
+    fill: #fff;
 }
 
 circle.eventBubble.major {
-    radius: 4px;
+    r: 7px;
     stroke: crimson;
+    fill: crimson;
 }

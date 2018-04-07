@@ -157,7 +157,7 @@ ajk.statistics = {
             {
                 this.data.purchases.push({
                     time:         time,
-                    list:         events.map(e => e.name),
+                    list:         events.map(e => [e.name, e.significance]),
                     significance: events.reduce((s, e) => { return (e.significance > s) ? e.significance : s; }, 0),
                     label:        (events.length > 1) ? '...' : events[0].name,
                 });
