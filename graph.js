@@ -9,10 +9,10 @@ ajk.graphFactory = {
         graphData.forEach((d) => {
             d.xScale = d3.time.scale()
                 .domain(d.timeDomain)
-                .range([d.padding, width - (d.padding * 3)]);
+                .range([d.padding[0], width - d.padding[1]]);
             d.yScale = d3.scale.linear()
                 .domain(d.yDomain)
-                .range([d.height - d.padding, d.padding]);
+                .range([d.height - d.padding[2], d.padding[3]]);
             d.lines.forEach((l) => {
                 l.xScale  = d.xScale;
                 l.yScale  = d.yScale;
@@ -35,13 +35,23 @@ ajk.graphFactory = {
         newSVGs.append('g').attr('class', 'x axis');
         newSVGs.append('g').attr('class', 'y axis');
         newSVGs.append('text').attr('class', 'title').text(d => d.title);
+        newSVGs.append('clipPath').attr('id', 'clip')
+            .append('rect')
+                .attr('fill', 'none');
 
         // Update SVG sizes
         svgs.attr('width', d => width).attr('height', d => d.height);
 
+        // Update clip rect
+        svgs.select('clipPath#clip rect')
+            .attr('width', d => (width - d.padding[0] - d.padding[1]))
+            .attr('height', d => (d.height - d.padding[2] - d.padding[3]))
+            .attr('x', d => d.padding[0])
+            .attr('y', d => d.padding[2]);
+
         // Update axes
         var xAxes = svgs.select('g.x.axis');
-        xAxes.attr('transform', d => 'translate(0, ' + (d.height - d.padding) + ')')
+        xAxes.attr('transform', d => 'translate(0, ' + (d.height - d.padding[2]) + ')')
         xAxes.each(function(d) {
             d3.svg.axis()
                 .scale(d.xScale)
@@ -50,7 +60,7 @@ ajk.graphFactory = {
                 .orient('bottom')(d3.select(this));
         });
         var yAxes = svgs.select('g.y.axis');
-        yAxes.attr('transform', d => 'translate(' + (d.padding - 10) + ', 0)');
+        yAxes.attr('transform', d => 'translate(' + (d.padding[0] - 10) + ', 0)');
         yAxes.each(function(d) {
             d3.svg.axis()
                 .scale(d.yScale)
@@ -60,13 +70,14 @@ ajk.graphFactory = {
         });
 
         // Update title position
-        svgs.select('text.title').attr('transform', d => 'translate(' + d.padding + ', ' + (d.padding - 5) + ')');
+        svgs.select('text.title').attr('transform', d => 'translate(' + d.padding[0] + ', ' + (d.padding[2] - 5) + ')');
 
         // Update lines
         var lines = svgs.selectAll('path.line').data(d => d.lines);
         lines.exit().remove();
         lines.enter().append('path')
-            .attr('class', 'line');
+            .attr('class', 'line')
+            .attr('clip-path', 'url(#clip)');
 
         lines.attr('d', (d) => {
                 return d3.svg.line()
@@ -81,7 +92,7 @@ ajk.graphFactory = {
         labels.exit().remove();
         labels.enter().append('text')
             .attr('class', 'lineLabel');
-        labels.attr('transform', d => 'translate(' + (width - (d.padding * 3) + 5) + ', ' + (d.yScale(d.y) + 4) + ')')
+        labels.attr('transform', d => 'translate(' + (width - d.padding[1] + 5) + ', ' + (d.yScale(d.y) + 4) + ')')
             .text(d => d.label)
             .style('fill', d => d.color);
     },

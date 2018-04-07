@@ -131,6 +131,8 @@ ajk.ui = {
     {
         interpolation: 'step-after',
         interpolationOptions: ['monotone', 'cardinal', 'step-after', 'linear'],
+        leftPadding: 64,
+        rightPadding: 128,
     },
 
     panelState: {},
@@ -138,6 +140,14 @@ ajk.ui = {
     modalDialogOpen: false,
     cachedGraphData: [],
     resizeListener:  null,
+
+    graphManip:
+    {
+        zoomSpeed:   0.001,
+        leftTrim:    0,
+        rightTrim:   0,
+        minTrimSize: 0.1,
+    },
 
     // Callbacks
     togglePanel: function(panelHeader)
@@ -259,8 +269,9 @@ ajk.ui = {
         var perTickData = {
             title: 'net resources / second',
             interpolation: 'step-after',
-            padding: 64,
+            padding: [this.graphOptions.leftPadding, this.graphOptions.rightPadding, 64, 64],
             height: 512,
+            baseTimeDomain: data.timeDomain,
             timeDomain: data.timeDomain,
             yDomain: [0, 0],
             xTicks: 7,
@@ -304,7 +315,35 @@ ajk.ui = {
 
     buildGraphs: function()
     {
+        this.cachedGraphData.forEach((g) => {
+            var range = g.baseTimeDomain[1] - g.baseTimeDomain[0];
+            g.timeDomain = [
+                g.baseTimeDomain[0] + (this.graphManip.leftTrim * range),
+                g.baseTimeDomain[1] - (this.graphManip.rightTrim * range)
+            ];
+        });
         ajk.graphFactory.buildGraphs('.graphContainer', this.cachedGraphData);
+    },
+
+    zoomGraphs: function(wheelEvent)
+    {
+        var target = wheelEvent.originalEvent.currentTarget;
+        var targetBounds = target.getBoundingClientRect();
+        var positionX = (wheelEvent.originalEvent.x - this.graphOptions.leftPadding - targetBounds.x) / (targetBounds.width - this.graphOptions.leftPadding - this.graphOptions.rightPadding);
+        var relativeZoomPosition = Math.max(0, Math.min(1, positionX));
+
+        var scrollDelta = wheelEvent.originalEvent.deltaY;
+        var zoomDelta = (scrollDelta * this.graphManip.zoomSpeed);
+        var zoomLeft = relativeZoomPosition * zoomDelta;
+        var zoomRight = zoomDelta - zoomLeft;
+
+        this.graphManip.leftTrim += zoomLeft;
+        this.graphManip.rightTrim += zoomRight;
+        var trimCenter = (this.graphManip.leftTrim + (1 - this.graphManip.rightTrim)) / 2;
+        this.graphManip.leftTrim = Math.max(0, Math.min(this.graphManip.leftTrim, trimCenter - (this.graphManip.minTrimSize / 2)));
+        this.graphManip.rightTrim = Math.max(0, Math.min(this.graphManip.rightTrim, 1 - (trimCenter + (this.graphManip.minTrimSize / 2))));
+
+        this.buildGraphs();
     },
 
     init: function()
@@ -361,8 +400,11 @@ ajk.ui = {
             }
         });
 
+        // Register events for the graph container
         this.resizeListener = new ResizeObserver(() => { this.buildGraphs(); });
         this.resizeListener.observe(d3.select('.graphContainer').node());
+
+        $('.graphContainer').on('wheel', (event) => { this.zoomGraphs(event); });
     },
 
     refresh: function()
