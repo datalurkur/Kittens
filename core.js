@@ -42,11 +42,39 @@ ajk.core = {
             if (btn != null) { btn.click(); }
         },
 
-        addEvent: function(type, data)
+        addEvent: function(data)
         {
             this.events.push({
-                type: type,
-                data: data
+                name:         data.item.model.metadata.name,
+                type:         data.type,
+                significance: data.significance
+            });
+        },
+
+        addTradeEvent: function(race, result)
+        {
+            // TODO
+        },
+
+        addCraftEvent: function(craftName, result)
+        {
+            // TODO
+        },
+
+        collectItemData: function(items, type, significance)
+        {
+            items.forEach((item) => {
+                var mData = item.model.metadata;
+                if (typeof mData === 'undefined') { return; }
+                if (!mData.unlocked || (typeof mData.researched !== 'undefined' && mData.researched)) { return; }
+                if (mData.hasOwnProperty('noStackable') && mData.noStackable && mData.val > 0) { return; }
+                this.itemData[mData.name] = {
+                    item:         item,
+                    type:         type,
+                    significance: significance,
+                    costData:     null,
+                    decisionTree: null,
+                };
             });
         },
 
@@ -54,56 +82,42 @@ ajk.core = {
         {
             this.itemData = {};
 
-            var pItems = [];
-
             var bonfireTab = ajk.base.bonfireTab();
             ajk.base.switchToTab(bonfireTab);
-            pItems = pItems.concat(bonfireTab.buttons);
+            this.collectItemData(bonfireTab.buttons, 'structure', 1);
 
             var scienceTab = ajk.base.scienceTab();
             if (scienceTab.visible)
             {
                 ajk.base.switchToTab(scienceTab);
-                pItems = pItems.concat(scienceTab.buttons);
+                this.collectItemData(scienceTab.buttons, 'science', 5);
             }
 
             var workshopTab = ajk.base.workshopTab();
             if (workshopTab.visible)
             {
                 ajk.base.switchToTab(workshopTab);
-                pItems = pItems.concat(workshopTab.buttons);
+                this.collectItemData(workshopTab.buttons, 'workshop', 4);
             }
 
             var religionTab = ajk.base.religionTab();
             if (religionTab.visible)
             {
                 ajk.base.switchToTab(religionTab);
-                pItems = pItems.concat(religionTab.rUpgradeButtons);
-                pItems = pItems.concat(religionTab.zgUpgradeButtons);
+                this.collectItemData(religionTab.rUpgradeButtons, 'religion', 3);
+                this.collectItemData(religionTab.zgUpgradeButtons, 'unicorns', 3);
             }
 
             var spaceTab = ajk.base.spaceTab();
             if (spaceTab.visible)
             {
                 ajk.base.switchToTab(spaceTab);
-                pItems = pItems.concat(spaceTab.GCPanel.children);
-                // TODO - Add the rest of the planets
+                this.collectItemData(spaceTab.GCPanel.children, 'missions', 5);
+                spaceTab.planetPanels.forEach((pp) => {
+                    this.collectItemData(pp.children, 'space', 2);
+                });
             }
             ajk.base.switchToTab(null);
-
-
-            for (var i = 0; i < pItems.length; ++i)
-            {
-                var mData = pItems[i].model.metadata;
-                if (typeof mData === 'undefined')        { continue; }
-                if (!mData.unlocked || (typeof mData.researched !== 'undefined' && mData.researched)) { continue; }
-                if (mData.hasOwnProperty('noStackable') && mData.noStackable && mData.val > 0) { continue; }
-                this.itemData[mData.name] = {
-                    item:         pItems[i],
-                    costData:     null,
-                    decisionTree: null,
-                };
-            }
         },
 
         rebuildExplorationData: function()
@@ -240,16 +254,26 @@ ajk.core = {
             {
                 var resultAmount = actualCraftCount * ajk.base.getCraftRatio();
                 this.log.detail('Crafted ' + resultAmount + ' ' + craftName);
-                this.addEvent('craft', {
-                    name:   craftName,
-                    amount: resultAmount
-                });
+                this.addCraftEvent(craftName, resultAmount);
                 return true;
             }
             else
             {
                 this.log.error('Failed to craft ' + actualCraftCount + ' ' + craftName);
                 return false;
+            }
+        },
+
+        tradeUpTo: function(race, trades)
+        {
+            var tradeAllCount = ajk.base.getTradeAllAmount(race.name);
+            var actualTradeCount = Math.min(tradeAllCount, trades);
+            if (actualTradeCount == 0) { return; }
+            var result = ajk.base.trade(race, actualTradeCount);
+            if (Object.keys(result).length > 0)
+            {
+                this.log.detail('Traded ' + actualTradeAmount + ' times with ' + race.name);
+                this.addTradeEvent(race, result);
             }
         },
 
@@ -261,7 +285,8 @@ ajk.core = {
                 this.log.debug('Acting on priority ' + itemName);
                 this.log.indent();
 
-                var tree = this.itemData[itemName].decisionTree;
+                var iData = this.itemData[itemName];
+                var tree = iData.decisionTree;
                 tree.traverse((opDecision) => {
                     this.log.debug(opDecision.identifier());
                     var method = opDecision.optionData.method;
@@ -271,11 +296,7 @@ ajk.core = {
                     }
                     else if (method == 'trade')
                     {
-                        var resources = ajk.base.trade(opDecision.optionData.extraData, opDecision.actionCount);
-                        this.addEvent('trade', {
-                            race:   opDecision.optionData.extraData.name,
-                            result: resources
-                        });
+                        this.tradeUpTo(opDecision.optionData.extraData, opDecision.actionCount);
                     }
                     else if (method == 'purchase' || method == 'explore')
                     {
@@ -289,7 +310,7 @@ ajk.core = {
                             else
                             {
                                 this.log.info(method + 'd ' + opDecision.optionData.identifier);
-                                this.addEvent(method, opDecision.optionData.identifier);
+                                this.addEvent(iData);
                                 this.successes += 1;
                             }
                         }
@@ -331,7 +352,7 @@ ajk.core = {
             }
 
             var catPower = this.cache.getResourceData('manpower');
-            if (catPower.unlocked && catPower.available / catPower.max >= ajk.config.conversionMaxRatio && !this.inDemand('manpower'))
+            if (catPower.unlocked && catPower.available / catPower.max >= ajk.config.conversionMaxRatio)
             {
                 var numHunts = Math.ceil(catPower.max * ajk.config.catpowerConversionRatio / 100);
                 this.log.debug('Sending hunters ' + numHunts + ' times');

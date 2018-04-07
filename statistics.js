@@ -113,8 +113,8 @@ ajk.statistics = {
                 }
                 valueGroup.timeDomain[0] = valueGroup.sets[0].values[0][0];
                 valueGroup.yDomain = [
-                    Math.min(...(valueGroup.sets.map(s => s.yDomain[0]))),
-                    Math.max(...(valueGroup.sets.map(s => s.yDomain[1]))),
+                    ajk.util.arrayMin(valueGroup.sets.map(s => s.yDomain[0])),
+                    ajk.util.arrayMax(valueGroup.sets.map(s => s.yDomain[1])),
                 ];
             }
             else
@@ -153,18 +153,22 @@ ajk.statistics = {
             }
 
             // Update purchases
-            var purchases = events.filter(e => e.type == 'purchase' || e.type == 'explore').map(e => e.data);
-            if (purchases.length > 0)
+            if (events.length > 0)
             {
-                this.data.purchases.push([time, purchases]);
+                this.data.purchases.push({
+                    time:         time,
+                    list:         events.map(e => e.name),
+                    significance: events.reduce((s, e) => { return (e.significance > s) ? e.significance : s; }, 0),
+                    label:        (events.length > 1) ? '...' : events[0].name,
+                });
                 if (this.data.purchases.length > this.maxValues) { this.data.purchases.shift(); }
             }
 
             // Update time domain
             // There should always be at least 1 per-tick value
             this.data.timeDomain = [
-                Math.min(...(Object.values(this.data.perTickResources).map(v => v.timeDomain[0]))),
-                Math.max(...(Object.values(this.data.perTickResources).map(v => v.timeDomain[1]))),
+                ajk.util.arrayMin(Object.values(this.data.perTickResources).map(v => v.timeDomain[0])),
+                ajk.util.arrayMax(Object.values(this.data.perTickResources).map(v => v.timeDomain[1])),
             ];
         },
 

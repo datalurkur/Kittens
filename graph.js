@@ -148,18 +148,31 @@ ajk.graphFactory = {
         // Update event bubbles
         var eventBubbles = svg.selectAll('circle.eventBubble').data(d => d.events);
         eventBubbles.exit().remove();
-        var newEventBubbles = eventBubbles.enter().append('circle')
-            .attr('class', 'eventBubble');
+        eventBubbles.enter()
+            .append('circle')
+                .attr('clip-path', 'url(#clip)')
+                .attr('class', 'eventBubble');
 
-        eventBubbles.attr('cx', d => xScale(d[0]))
+        var eventLabels = svg.selectAll('text.eventLabel').data(d => d.events);
+        eventLabels.exit().remove();
+        eventLabels.enter()
+            .append('text')
+                .attr('clip-path', 'url(#clip)')
+                .attr('class', 'eventLabel');
+
+        eventBubbles.attr('class', (d) => {
+                     if (d.significance < 3) { return 'eventBubble minor'; }
+                else if (d.significance > 4) { return 'eventBubble major'; }
+                else                         { return 'eventBubble';       }
+            })
+            .attr('cx', d => xScale(d.time))
             .attr('cy', graphData.padding[3])
             .attr('r', 8)
             .on('mouseover', (d) => {
-                var text = d[1].join('\n');
-                tooltip.attr('transform', 'translate(' + xScale(d[0]) + ', ' + (graphData.padding[3] + 24) + ')')
+                tooltip.attr('transform', 'translate(' + xScale(d.time) + ', ' + (graphData.padding[3] + 24) + ')')
                     .style('opacity', 1);
 
-                var tooltipLines = tooltip.selectAll('tspan').data(d[1]);
+                var tooltipLines = tooltip.selectAll('tspan').data(d.list);
                 tooltipLines.exit().remove();
                 tooltipLines.enter().append('tspan');
 
@@ -170,5 +183,8 @@ ajk.graphFactory = {
             .on('mouseout', (d) => {
                 tooltip.transition().duration(200).style('opacity', 0);
             });
+
+        eventLabels.text(d => d.label)
+            .attr('transform', d => 'translate(' + xScale(d.time) + ', ' + (graphData.padding[3] + 24) + ') rotate(90)');
     },
 }

@@ -8,49 +8,49 @@ var ajk = {
 
         // Data Accessors
         // Tabs
-        bonfireTab:         function()            { return gamePage.tabs[0];                                             },
-        scienceTab:         function()            { return gamePage.tabs[2];                                             },
-        workshopTab:        function()            { return gamePage.tabs[3];                                             },
-        diplomacyTab:       function()            { return gamePage.tabs[4];                                             },
-        religionTab:        function()            { return gamePage.tabs[5];                                             },
-        spaceTab:           function()            { return gamePage.tabs[6];                                             },
+        bonfireTab:         function()            { return gamePage.tabs[0];                                               },
+        scienceTab:         function()            { return gamePage.tabs[2];                                               },
+        workshopTab:        function()            { return gamePage.tabs[3];                                               },
+        diplomacyTab:       function()            { return gamePage.tabs[4];                                               },
+        religionTab:        function()            { return gamePage.tabs[5];                                               },
+        spaceTab:           function()            { return gamePage.tabs[6];                                               },
 
         // Resources
-        getAllResources:    function()            { return gamePage.resPool.resources;                                   },
-        getResource:        function(resName)     { return gamePage.resPool.get(resName);                                },
-        getEnergyDelta:     function()            { return gamePage.resPool.getEnergyDelta();                            },
-        getProductionOf:    function(resName)     { return gamePage.getResourcePerTick(resName);                         },
-        getConsumptionOf:   function(resName)     { return gamePage.getResourcePerTickConvertion(resName);               },
+        getAllResources:    function()            { return gamePage.resPool.resources;                                     },
+        getResource:        function(resName)     { return gamePage.resPool.get(resName);                                  },
+        getEnergyDelta:     function()            { return gamePage.resPool.getEnergyDelta();                              },
+        getProductionOf:    function(resName)     { return gamePage.getResourcePerTick(resName);                           },
+        getConsumptionOf:   function(resName)     { return gamePage.getResourcePerTickConvertion(resName);                 },
 
         // Village stuff
-        getFreeWorkers:     function()            { return gamePage.village.getFreeKittens();                            },
-        getJob:             function(jobName)     { return gamePage.village.getJob(jobName);                             },
-        getHunterRatio:     function()            { return gamePage.getEffect('hunterRatio') + 1;                        },
+        getFreeWorkers:     function()            { return gamePage.village.getFreeKittens();                              },
+        getJob:             function(jobName)     { return gamePage.village.getJob(jobName);                               },
+        getHunterRatio:     function()            { return gamePage.getEffect('hunterRatio') + 1;                          },
 
         // Trade stuff
-        getAllRaces:        function()            { return gamePage.diplomacy.races;                                     },
-        getRace:            function(raceName)    { return gamePage.diplomacy.getRace(raceName);                         },
-        getTradeRatio:      function()            { return gamePage.diplomacy.getTradeRatio() + 1;                       },
-        getTradeAllAmount:  function(raceName)    { return gamePage.diplomacy.getMaxTradeAmount(this.getRace(raceName)); },
+        getAllRaces:        function()            { return gamePage.diplomacy.races;                                       },
+        getRace:            function(raceName)    { return gamePage.diplomacy.get(raceName);                               },
+        getTradeRatio:      function()            { return gamePage.diplomacy.getTradeRatio() + 1;                         },
+        getTradeAllAmount:  function(raceName)    { return gamePage.diplomacy.getMaxTradeAmt(this.getRace(raceName)) || 0; },
 
         // Science stuf
-        getScience:         function(scienceName) { return gamePage.science.get(scienceName);                            },
+        getScience:         function(scienceName) { return gamePage.science.get(scienceName);                              },
 
         // Workshop stuff
-        getAllCrafts:       function()            { return gamePage.workshop.crafts;                                     },
-        getCraft:           function(craftName)   { return gamePage.workshop.getCraft(craftName);                        },
-        getCraftRatio:      function()            { return 1 + gamePage.getCraftRatio();                                 },
-        getCraftAllAmount:  function(craftName)   { return gamePage.workshop.getCraftAllCount(craftName);                },
+        getAllCrafts:       function()            { return gamePage.workshop.crafts;                                       },
+        getCraft:           function(craftName)   { return gamePage.workshop.getCraft(craftName);                          },
+        getCraftRatio:      function()            { return 1 + gamePage.getCraftRatio();                                   },
+        getCraftAllAmount:  function(craftName)   { return gamePage.workshop.getCraftAllCount(craftName);                  },
 
         // Religion stuff
-        getReligionUpgrade: function(upgradeName) { return gamePage.religion.getRU(upgradeName);                         },
-        getZigguratUpgrade: function(upgradeName) { return gamePage.religion.getZU(upgradeName);                         },
+        getReligionUpgrade: function(upgradeName) { return gamePage.religion.getRU(upgradeName);                           },
+        getZigguratUpgrade: function(upgradeName) { return gamePage.religion.getZU(upgradeName);                           },
 
         // Misc stuff
-        getSeason:          function()            { return gamePage.calendar.season;                                     },
-        getObserveButton:   function()            { return gamePage.calendar.observeBtn;                                 },
-        getYear:            function()            { return gamePage.calendar.year;                                       },
-        getPerk:            function(perkName)    { return gamePage.prestige.getPerk(perkName);                          },
+        getSeason:          function()            { return gamePage.calendar.season;                                       },
+        getObserveButton:   function()            { return gamePage.calendar.observeBtn;                                   },
+        getYear:            function()            { return gamePage.calendar.year;                                         },
+        getPerk:            function(perkName)    { return gamePage.prestige.getPerk(perkName);                            },
 
         // Operations
         switchToTab: function(tab)
@@ -149,21 +149,6 @@ var ajk = {
                 return {};
             }
         },
-        tradeAll: function(raceName)
-        {
-            if (this.simulate) { return; }
-            if (ajk.config.useAccurateTrading)
-            {
-                var diplo = gamePage.diplomacy;
-                var race = this.getRace(raceName);
-                return this.tradeHack(race, diplo.getMaxTradeAmt(race));
-            }
-            else
-            {
-                gamePage.diplomacy.tradeAll(this.getRace(raceName));
-                return {};
-            }
-        },
         tradeHack: function(race, amt)
         {
             var diplo = gamePage.diplomacy;
@@ -174,7 +159,8 @@ var ajk = {
             // ----------------------------------------------------------------------------------------
             if (!diplo.hasMultipleResources(race, amt))
             {
-                return;
+                // Modified this to account for expected return value
+                return {};
             }
 
             diplo.game.resPool.addResEvent("manpower", -50 * amt);
@@ -217,7 +203,7 @@ ajk.config = {
     ticking:                 false,
 
     tickFrequency:           10,
-    catpowerConversionRatio: 0.75,
+    catpowerConversionRatio: 0.25,
     conversionRatio:         0.1,
     conversionMaxRatio:      0.97,
 
@@ -236,6 +222,14 @@ ajk.util = {
         if (!object.hasOwnProperty(key)) { object[key] = defaultValue; }
         object[key] += mod;
     },
+    arrayMin: function(array)
+    {
+        return array.reduce((min, v) => { return (min < v) ? min : v; }, Infinity);
+    },
+    arrayMax: function(array)
+    {
+        return array.reduce((max, v) => { return (max > v) ? max : v; }, -Infinity);
+    }
 };
 
 ajk.log = {

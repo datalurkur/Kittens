@@ -184,8 +184,16 @@ text.lineLabel {
 }
 
 circle.eventBubble {
-    radius: 8px;
+    radius: 3px;
     stroke: steelblue;
-    stroke-width: 3px;
-    fill-opacity: 0.1;
+}
+
+circle.eventBubble.minor {
+    radius: 2px;
+    stroke: #fff;
+}
+
+circle.eventBubble.major {
+    radius: 4px;
+    stroke: crimson;
 }
