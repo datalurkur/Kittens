@@ -112,6 +112,7 @@ ajk.graphFactory = {
         newSVG.append('g').attr('class', 'x axis');
         newSVG.append('text').attr('class', 'title').text(d => d.title);
         newSVG.append('clipPath').attr('id', 'clip').append('rect');
+        newSVG.append('g').attr('class', 'groupContainer');
 
         // Update SVG size
         svg.attr('width', containerDimensions.width).attr('height', containerDimensions.height);
@@ -139,7 +140,7 @@ ajk.graphFactory = {
         svg.select('text.title').attr('transform', d => 'translate(' + graphData.padding[0] + ', ' + 32 + ')');
 
         // Update event groups
-        var eventGroups = svg.selectAll('g.eventGroup').data(d => d.events);
+        var eventGroups = svg.select('g.groupContainer').selectAll('g.eventGroup').data(d => d.events);
         eventGroups.exit().remove();
         var newEventGroups = eventGroups.enter()
             .append('g')
