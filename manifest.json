@@ -2,6 +2,13 @@
     "manifest_version": 2,
     "name": "AJ Kittens Automation Extension",
     "version": "1.0.0",
+    "icons": {
+        "16":  "icons/16.png",
+        "48":  "icons/48.png",
+        "128": "icons/128.png"
+    },
+    "permissions": ["tabs"],
+    "browser_action": {},
     "web_accessible_resources": [
         "base.js",
         "log.js",
@@ -20,6 +27,9 @@
         "sidebar.html",
         "backupWidget.html"
     ],
+    "background": {
+        "scripts": ["background.js"]
+    },
     "content_scripts":
     [
         {
