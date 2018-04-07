@@ -2,26 +2,23 @@
 
 // Interesting statistics
 // ----------------------
-// -Resource production over time
 // -Net resource production over time
 // -Trade data - scatter plot?
 // -Craft data - scatter plot?
 // -Job balancing // https://bl.ocks.org/mbostock/4062085
 // -Resource usage sunburst // https://bl.ocks.org/kerryrodden/7090426
-// -Action map / plot / ?
 
 // -Decision Tree visualization
 // -Item weights / time
 // -Bottleneck ranking
 
-// TODO
-// -Start collecting data
-// -Determine how to store and reload previous data
-// -Figure out how to get amounts from trading
-
 ajk.statistics = {
+    version: 0,
+
     internal:
     {
+        log: ajk.log.addChannel('stats', true),
+
         maxValues: 2048,
 
         ValueSet: function()
@@ -41,6 +38,7 @@ ajk.statistics = {
 
         DataSet: function()
         {
+            this.version          = ajk.statistics.version;
             this.allResources     = [];
             this.perTickResources = {};
             this.purchases        = [];
@@ -186,7 +184,17 @@ ajk.statistics = {
             }
             else
             {
-                this.data = JSON.parse(localStorage.ajkStats);
+                var parsed = JSON.parse(localStorage.ajkStats);
+                if (parsed.version != ajk.statistics.version)
+                {
+                    this.log.warn('Old version of statistics data detected, clearing previous stats');
+                    this.log.flush(false);
+                    this.clear();
+                }
+                else
+                {
+                    this.data = parsed;
+                }
             }
         },
 

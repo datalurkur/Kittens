@@ -247,7 +247,7 @@ ajk.log = {
         currentChannel:    1,
         channelNameLength: 0,
 
-        logLevel:    5,
+        logLevel:    2,
         indentLevel: 0,
 
         debugQueue: [],

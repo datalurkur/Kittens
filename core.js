@@ -35,6 +35,12 @@ ajk.core = {
         priorityResourceDemand: {},
 
         events: [],
+        crafts: [],
+        trades: [],
+
+        // TODO - Populate these
+        consumption: {},
+        production:  {},
 
         checkForObservationEvent: function()
         {
@@ -51,14 +57,22 @@ ajk.core = {
             });
         },
 
-        addTradeEvent: function(race, result)
+        addTradeEvent: function(race, cost, result)
         {
-            // TODO
+            this.crafts.push({
+                name:   race.name,
+                cost:   cost,
+                result: result,
+            });
         },
 
-        addCraftEvent: function(craftName, result)
+        addCraftEvent: function(craftName, cost, result)
         {
-            // TODO
+            this.trades.push({
+                name:   craftName,
+                cost:   cost,
+                result: result,
+            });
         },
 
         collectItemData: function(items, type, significance)
@@ -252,9 +266,15 @@ ajk.core = {
             if (actualCraftCount == 0) { return true; }
             if (ajk.base.craft(craftName, actualCraftCount))
             {
+                var costAmount = ajk.base.getCraft(craftName).prices.map((k) => {
+                    return {
+                        name:   k.name,
+                        amount: k.val * actualCraftCount
+                    };
+                });
                 var resultAmount = actualCraftCount * ajk.base.getCraftRatio();
                 this.log.detail('Crafted ' + resultAmount + ' ' + craftName);
-                this.addCraftEvent(craftName, resultAmount);
+                this.addCraftEvent(craftName, costAmount, resultAmount);
                 return true;
             }
             else
@@ -272,8 +292,22 @@ ajk.core = {
             var result = ajk.base.trade(race, actualTradeCount);
             if (Object.keys(result).length > 0)
             {
-                this.log.detail('Traded ' + actualTradeAmount + ' times with ' + race.name);
-                this.addTradeEvent(race, result);
+                this.log.detail('Traded ' + actualTradeCount + ' times with ' + race.name);
+                var costs = race.buys.map((k) => {
+                    return {
+                        name:   k.name,
+                        amount: k.val * actualTradeCount
+                    };
+                });
+                costs.push({
+                    name:  'catpower',
+                    amount: 50 * actualTradeCount,
+                });
+                costs.push({
+                    name:  'gold',
+                    amount: 15 * actualTradeCount,
+                });
+                this.addTradeEvent(race, costs, result);
             }
         },
 
@@ -368,16 +402,16 @@ ajk.core = {
 
             // We don't particularly care if these fail or not, for now...
             this.log.debug('Crafting all parchment');
-            ajk.base.craftAll('parchment');
+            this.craftUpTo('parchment', Infinity);
             if (!this.inDemand('parchment') && !this.inDemand('culture'))
             {
                 this.log.debug('Crafting all manuscripts');
-                ajk.base.craftAll('manuscript');
+                this.craftUpTo('manuscript', Infinity);
             }
             if (!this.inDemand('manuscript') && !this.inDemand('science'))
             {
                 this.log.debug('Crafting all compendiums');
-                ajk.base.craftAll('compedium');
+                this.craftUpTo('compedium', Infinity);
             }
         },
 
@@ -398,6 +432,8 @@ ajk.core = {
         {
             var timerData = ajk.timer.start('Tick Execution');
             this.events = [];
+            this.crafts = [];
+            this.trades = [];
 
             var doRebuild = this.cacheNeedsUpdate();
             this.year = ajk.base.getYear();
