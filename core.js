@@ -38,9 +38,9 @@ ajk.core = {
         crafts: [],
         trades: [],
 
-        // TODO - Populate these
         consumption: {},
         production:  {},
+        utilization: {},
 
         checkForObservationEvent: function()
         {
@@ -48,17 +48,24 @@ ajk.core = {
             if (btn != null) { btn.click(); }
         },
 
-        addEvent: function(data)
+        addEvent: function(item, identifier, type, significance)
         {
             this.events.push({
-                name:         data.item.model.metadata.name,
-                type:         data.type,
-                significance: data.significance
+                name:         identifier,
+                type:         type,
+                significance: significance
             });
         },
 
         addTradeEvent: function(race, cost, result)
         {
+            cost.forEach((p) => {
+                ajk.util.ensureKeyAndModify(this.consumption, p.name, 0, p.val);
+            });
+            for (var resource in result)
+            {
+                ajk.util.ensureKeyAndModify(this.production, resource, 0, result[resource]);
+            }
             this.crafts.push({
                 name:   race.name,
                 cost:   cost,
@@ -66,8 +73,16 @@ ajk.core = {
             });
         },
 
-        addCraftEvent: function(craftName, cost, result)
+        addCraftEvent: function(craftName, cost, result, purposeful)
         {
+            if (purposeful)
+            {
+                // We only want to consider crafts that go towards fulfilling a need for consumption and production analysis
+                cost.forEach((p) => {
+                    ajk.util.ensureKeyAndModify(this.consumption, p.name, 0, p.val);
+                });
+                ajk.util.ensureKeyAndModify(this.production, craftName, 0, result);
+            }
             this.trades.push({
                 name:   craftName,
                 cost:   cost,
@@ -190,6 +205,8 @@ ajk.core = {
 
                     this.itemData['tradeRouteDiscovery'] = {
                         item:         exploreItem,
+                        type:         'meta',
+                        significance: 5,
                         costData:     costData,
                         decisionTree: null,
                     };
@@ -259,7 +276,7 @@ ajk.core = {
 
         inDemand: function(resourceName) { return this.priorityResourceDemand.hasOwnProperty(resourceName) && this.priorityResourceDemand[resourceName] > 0; },
 
-        craftUpTo: function(craftName, amount)
+        craftUpTo: function(craftName, amount, purposeful)
         {
             var craftAllCount = ajk.base.getCraftAllAmount(craftName);
             var actualCraftCount = Math.min(craftAllCount, amount);
@@ -268,13 +285,13 @@ ajk.core = {
             {
                 var costAmount = ajk.base.getCraft(craftName).prices.map((k) => {
                     return {
-                        name:   k.name,
-                        amount: k.val * actualCraftCount
+                        name: k.name,
+                        val:  k.val * actualCraftCount
                     };
                 });
                 var resultAmount = actualCraftCount * ajk.base.getCraftRatio();
                 this.log.detail('Crafted ' + resultAmount + ' ' + craftName);
-                this.addCraftEvent(craftName, costAmount, resultAmount);
+                this.addCraftEvent(craftName, costAmount, resultAmount, purposeful);
                 return true;
             }
             else
@@ -295,20 +312,74 @@ ajk.core = {
                 this.log.detail('Traded ' + actualTradeCount + ' times with ' + race.name);
                 var costs = race.buys.map((k) => {
                     return {
-                        name:   k.name,
-                        amount: k.val * actualTradeCount
+                        name: k.name,
+                        val:  k.val * actualTradeCount
                     };
                 });
                 costs.push({
-                    name:  'catpower',
-                    amount: 50 * actualTradeCount,
+                    name: 'catpower',
+                    val:  50 * actualTradeCount,
                 });
                 costs.push({
-                    name:  'gold',
-                    amount: 15 * actualTradeCount,
+                    name: 'gold',
+                    val:  15 * actualTradeCount,
                 });
                 this.addTradeEvent(race, costs, result);
             }
+        },
+
+        applyAmbientProductionConsumption: function()
+        {
+            var ticksElapsed = ajk.config.tickFrequency * 5;
+            this.cache.getAllResources().forEach((r) => {
+                var res = this.cache.getResourceData(r);
+                if (res.perTick > 0)
+                {
+                    this.production[r] = (res.perTick * ticksElapsed);
+                }
+                else if (res.perTick < 0)
+                {
+                    this.consumption[r] = -(res.perTick * ticksElapsed);
+                }
+            });
+        },
+
+        applyProjectedConsumption: function(decision)
+        {
+            if (decision.maxTime == Infinity) { return; }
+            for (var resource in decision.consumption)
+            {
+                if (decision.consumption[resource] == 0) { continue; }
+                var projectedPerTick = decision.consumption[resource] / decision.maxTime;
+                ajk.util.ensureKeyAndModify(this.consumption, resource, 0, projectedPerTick);
+            }
+            for (var resource in decision.demand)
+            {
+                if (decision.demand[resource] == 0) { continue; }
+                var projectedPerTick = decision.demand[resource] / decision.maxTime;
+                ajk.util.ensureKeyAndModify(this.consumption, resource, 0, projectedPerTick);
+            }
+        },
+
+        computeResourceUtilization: function()
+        {
+            // If we only have production for a resource, we're not interested in its utilization (it's 0)
+            Object.keys(this.consumption).forEach((r) => {
+                var c = this.consumption[r];
+                var p = this.production[r] || 0;
+                var u = c / p;
+                if (u == NaN)
+                {
+                    this.log.warn('Consumption and production are both zero - this should not happen');
+                    u = 0;
+                }
+                u = Math.min(1, u);
+                if (u < 0)
+                {
+                    this.log.warn('Resource utilization computed to be negative - this should not be possible');
+                }
+                this.utilization[r] = u;
+            });
         },
 
         pursuePriority: function()
@@ -326,7 +397,7 @@ ajk.core = {
                     var method = opDecision.optionData.method;
                     if (method == 'craft')
                     {
-                        this.craftUpTo(opDecision.optionData.extraData.name, opDecision.actionCount);
+                        this.craftUpTo(opDecision.optionData.extraData.name, opDecision.actionCount, true);
                     }
                     else if (method == 'trade')
                     {
@@ -334,23 +405,24 @@ ajk.core = {
                     }
                     else if (method == 'purchase' || method == 'explore')
                     {
-                        if (ajk.base.readyForPurchase(opDecision.optionData.extraData))
+                        var item = opDecision.optionData.extraData;
+                        if (ajk.base.readyForPurchase(item))
                         {
-                            this.log.detail('Ready to ' + method);
-                            if (!ajk.base.purchaseItem(opDecision.optionData.extraData))
+                            if (!ajk.base.purchaseItem(item))
                             {
-                                this.log.error('Failed to ' + method + ' ' + opDecision.optionData.identifier);
+                                this.log.error('Failed to ' + opDecision.identifier());
                             }
                             else
                             {
                                 this.log.info(method + 'd ' + opDecision.optionData.identifier);
-                                this.addEvent(iData);
+                                this.addEvent(item, opDecision.optionData.identifier, iData.type, iData.significance);
                                 this.successes += 1;
                             }
                         }
                         else
                         {
                             this.log.detail('Waiting on resources to ' + method);
+                            this.applyProjectedConsumption(opDecision);
                         }
                     }
                 }, null, true);
@@ -381,7 +453,7 @@ ajk.core = {
                     var craftPrice = this.cache.getResourceCostForCraft(rName, craftName);
                     var numCrafts = Math.ceil(amountToConvert / craftPrice);
                     this.log.debug('Converting ' + amountToConvert + ' ' + rName + 's into ' + craftName);
-                    this.craftUpTo(craftName, numCrafts);
+                    this.craftUpTo(craftName, numCrafts, false);
                 }
             }
 
@@ -402,16 +474,16 @@ ajk.core = {
 
             // We don't particularly care if these fail or not, for now...
             this.log.debug('Crafting all parchment');
-            this.craftUpTo('parchment', Infinity);
+            this.craftUpTo('parchment', Infinity, false);
             if (!this.inDemand('parchment') && !this.inDemand('culture'))
             {
                 this.log.debug('Crafting all manuscripts');
-                this.craftUpTo('manuscript', Infinity);
+                this.craftUpTo('manuscript', Infinity, false);
             }
             if (!this.inDemand('manuscript') && !this.inDemand('science'))
             {
                 this.log.debug('Crafting all compendiums');
-                this.craftUpTo('compedium', Infinity);
+                this.craftUpTo('compedium', Infinity, false);
             }
         },
 
@@ -428,12 +500,17 @@ ajk.core = {
                     ajk.base.getSeason() != this.season);
         },
 
+
         unsafeTick: function()
         {
             var timerData = ajk.timer.start('Tick Execution');
             this.events = [];
             this.crafts = [];
             this.trades = [];
+
+            this.production  = {};
+            this.consumption = {};
+            this.utilization = {};
 
             var doRebuild = this.cacheNeedsUpdate();
             this.year = ajk.base.getYear();
@@ -461,6 +538,9 @@ ajk.core = {
                 timerData.interval('Update Decision Trees');
             }
 
+            this.applyAmbientProductionConsumption();
+            timerData.interval('Collect Ambient Resource Production');
+
             ajk.analysisModule.computeBottlenecks(this.analysisData, this.cache, this.itemData);
             timerData.interval('Bottleneck Analysis');
 
@@ -470,10 +550,19 @@ ajk.core = {
             this.convertResources();
             timerData.interval('Resource Conversion');
 
+            this.computeResourceUtilization();
+            timerData.interval('Compute Utilization');
+
             //ajk.jobs.assignFreeKittens();
             timerData.interval('Job Assignment');
 
-            ajk.statistics.update(this.cache, this.events);
+            ajk.statistics.update(
+                this.cache,
+                this.events,
+                this.crafts,
+                this.trades,
+                this.utilization
+            );
             timerData.interval('Statistics');
 
             this.refreshUI();

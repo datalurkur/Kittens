@@ -42,6 +42,9 @@ ajk.statistics = {
             this.allResources     = [];
             this.perTickResources = {};
             this.purchases        = [];
+            this.crafts           = [];
+            this.trades           = [];
+            this.utilization      = {};
             this.timeDomain       = [0,1];
         },
 
@@ -124,7 +127,7 @@ ajk.statistics = {
             }
         },
 
-        addDatapoint: function(cache, events)
+        addDatapoint: function(cache, events, crafts, trades, utilization)
         {
             var time = (new Date()).valueOf();
             // If the last value in a data set is more than 50% behind the last expected tick, start a new data set
@@ -160,6 +163,23 @@ ajk.statistics = {
                     label:        (events.length > 1) ? '...' : events[0].name,
                 });
                 if (this.data.purchases.length > this.maxValues) { this.data.purchases.shift(); }
+            }
+
+            // TODO - Incorporate crafts, trading, production, and consumption
+
+            // Update utilization
+            for (var resource in utilization)
+            {
+                if (!this.data.utilization.hasOwnProperty(resource))
+                {
+                    this.data.utilization[resource] = new this.ValueGroup();
+                }
+                this.addValueToGroup(
+                    this.data.utilization[resource],
+                    time,
+                    utilization[resource],
+                    discontinuityThreshold
+                );
             }
 
             // Update time domain
@@ -204,9 +224,20 @@ ajk.statistics = {
         },
     },
 
-    update: function(cache, events) { this.internal.addDatapoint(cache, events); },
-    get:    function()              { return this.internal.data; },
-    clear:  function()              { this.internal.clear(); },
+    update: function(cache, events, crafts, trades, utilization)
+    {
+        this.internal.addDatapoint(cache, events, crafts, trades, utilization);
+    },
+
+    get: function()
+    {
+        return this.internal.data;
+    },
+
+    clear: function()
+    {
+        this.internal.clear();
+    },
 };
 
 window.addEventListener('load', () => { ajk.statistics.internal.loadFromWebStorage(); return null; });

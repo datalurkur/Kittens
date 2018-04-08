@@ -449,6 +449,11 @@ ajk.cache = {
         this.internal.cacheHuntingData();
     },
 
+    getAllResources: function()
+    {
+        return Object.keys(this.internal.resourceCache);
+    },
+
     getResourceData: function(resourceName)
     {
         if (!this.internal.resourceCache.hasOwnProperty(resourceName))

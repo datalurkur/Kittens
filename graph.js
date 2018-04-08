@@ -15,7 +15,7 @@ ajk.graphFactory = {
 
     buildLineGraph: function(graphData)
     {
-        var container = d3.select(graphData.parent);
+        var container = d3.select('#' + graphData.parent);
         var containerDimensions = container.node().getBoundingClientRect();
 
         if (containerDimensions.width == 0 || containerDimensions.height == 0) { return; }
@@ -25,7 +25,7 @@ ajk.graphFactory = {
             .range([graphData.padding[0], containerDimensions.width - graphData.padding[1]]);
         var yScale = d3.scale.linear()
             .domain(graphData.yDomain)
-            .range([graphData.height - graphData.padding[2], graphData.padding[3]]);
+            .range([containerDimensions.height - graphData.padding[2], graphData.padding[3]]);
 
         var svg = container.selectAll('svg').data([graphData]);
         // Create if it doesn't exist
@@ -33,13 +33,13 @@ ajk.graphFactory = {
         newSVG.append('g').attr('class', 'x axis');
         newSVG.append('g').attr('class', 'y axis');
         newSVG.append('text').attr('class', 'title').text(d => d.title);
-        newSVG.append('clipPath').attr('id', 'clip').append('rect');
+        newSVG.append('clipPath').attr('id', graphData.parent + 'Clip').append('rect');
 
         // Update SVG size
         svg.attr('width', containerDimensions.width).attr('height', containerDimensions.height);
 
         // Update clip rect
-        svg.select('clipPath#clip rect')
+        svg.select('clipPath rect')
             .attr('width', d => (containerDimensions.width - graphData.padding[0] - graphData.padding[1]))
             .attr('height', d => (containerDimensions.height - graphData.padding[2] - graphData.padding[3]))
             .attr('x', d => graphData.padding[0])
@@ -66,14 +66,14 @@ ajk.graphFactory = {
         });
 
         // Update title position
-        svg.select('text.title').attr('transform', d => 'translate(' + graphData.padding[0] + ', ' + 32 + ')');
+        svg.select('text.title').attr('transform', d => 'translate(' + graphData.padding[0] + ', ' + 24 + ')');
 
         // Update lines
         var lines = svg.selectAll('path.line').data(d => d.lines);
         lines.exit().remove();
         lines.enter().append('path')
             .attr('class', 'line')
-            .attr('clip-path', 'url(#clip)');
+            .attr('clip-path', 'url(#' + graphData.parent + 'Clip)');
 
         lines.attr('d', (d) => {
                 return d3.svg.line()
@@ -97,7 +97,7 @@ ajk.graphFactory = {
     {
         var ttPadding = 5;
 
-        var container = d3.select(graphData.parent);
+        var container = d3.select('#' + graphData.parent);
         var containerDimensions = container.node().getBoundingClientRect();
 
         if (containerDimensions.width == 0 || containerDimensions.height == 0) { return; }
@@ -111,14 +111,14 @@ ajk.graphFactory = {
         var newSVG = svg.enter().append('svg');
         newSVG.append('g').attr('class', 'x axis');
         newSVG.append('text').attr('class', 'title').text(d => d.title);
-        newSVG.append('clipPath').attr('id', 'clip').append('rect');
+        newSVG.append('clipPath').attr('id', graphData.parent + 'Clip').append('rect');
         newSVG.append('g').attr('class', 'groupContainer');
 
         // Update SVG size
         svg.attr('width', containerDimensions.width).attr('height', containerDimensions.height);
 
         // Update clip rect
-        svg.select('clipPath#clip rect')
+        svg.select('clipPath rect')
             .attr('width', d => (containerDimensions.width - graphData.padding[0] - graphData.padding[1]))
             .attr('height', d => containerDimensions.height)
             .attr('x', d => graphData.padding[0])
@@ -137,14 +137,14 @@ ajk.graphFactory = {
         });
 
         // Update title position
-        svg.select('text.title').attr('transform', d => 'translate(' + graphData.padding[0] + ', ' + 32 + ')');
+        svg.select('text.title').attr('transform', d => 'translate(' + graphData.padding[0] + ', ' + 24 + ')');
 
         // Update event groups
         var eventGroups = svg.select('g.groupContainer').selectAll('g.eventGroup').data(d => d.events);
         eventGroups.exit().remove();
         var newEventGroups = eventGroups.enter()
             .append('g')
-                .attr('clip-path', 'url(#clip)')
+                .attr('clip-path', 'url(#' + graphData.parent + 'Clip)')
                 .attr('class', 'eventGroup');
         newEventGroups.append('text')
             .attr('class', 'eventLabel');
