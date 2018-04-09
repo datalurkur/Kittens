@@ -78,9 +78,11 @@ ajk.core = {
         collectItemData: function(items, type, significance)
         {
             items.forEach((item) => {
+                if (!item.model.visible) { return; }
+                if (!item.model.hasOwnProperty('metadata')) { return; }
                 var mData = item.model.metadata;
-                if (typeof mData === 'undefined') { return; }
-                if (!mData.unlocked || (typeof mData.researched !== 'undefined' && mData.researched)) { return; }
+                if (mData.hasOwnProperty('unlocked') && !mData.unlocked) { return; }
+                if (mData.hasOwnProperty('researched') && mData.researched) { return; }
                 if (mData.hasOwnProperty('noStackable') && mData.noStackable && mData.val > 0) { return; }
                 this.itemData[mData.name] = {
                     item:         item,
