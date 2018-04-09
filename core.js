@@ -59,13 +59,6 @@ ajk.core = {
 
         addTradeEvent: function(race, cost, result)
         {
-            cost.forEach((p) => {
-                ajk.util.ensureKeyAndModify(this.consumption, p.name, 0, p.val);
-            });
-            for (var resource in result)
-            {
-                ajk.util.ensureKeyAndModify(this.production, resource, 0, result[resource]);
-            }
             this.crafts.push({
                 name:   race.name,
                 cost:   cost,
@@ -75,14 +68,6 @@ ajk.core = {
 
         addCraftEvent: function(craftName, cost, result, purposeful)
         {
-            if (purposeful)
-            {
-                // We only want to consider crafts that go towards fulfilling a need for consumption and production analysis
-                cost.forEach((p) => {
-                    ajk.util.ensureKeyAndModify(this.consumption, p.name, 0, p.val);
-                });
-                ajk.util.ensureKeyAndModify(this.production, craftName, 0, result);
-            }
             this.trades.push({
                 name:   craftName,
                 cost:   cost,
@@ -330,34 +315,29 @@ ajk.core = {
 
         applyAmbientProductionConsumption: function()
         {
-            var ticksElapsed = ajk.config.tickFrequency * 5;
             this.cache.getAllResources().forEach((r) => {
                 var res = this.cache.getResourceData(r);
                 if (res.perTick > 0)
                 {
-                    this.production[r] = (res.perTick * ticksElapsed);
+                    this.log.detail('Ambient production of ' + r + ' is ' + res.perTick);
+                    this.production[r] = res.perTick;
                 }
                 else if (res.perTick < 0)
                 {
-                    this.consumption[r] = -(res.perTick * ticksElapsed);
+                    this.log.detail('Ambient consumption of ' + r + ' is ' + res.perTick);
+                    this.consumption[r] = -res.perTick;
                 }
             });
         },
 
-        applyProjectedConsumption: function(decision)
+        applyProjectedConsumption: function(decision, weight)
         {
-            if (decision.maxTime == Infinity) { return; }
-            for (var resource in decision.consumption)
-            {
-                if (decision.consumption[resource] == 0) { continue; }
-                var projectedPerTick = decision.consumption[resource] / decision.maxTime;
-                ajk.util.ensureKeyAndModify(this.consumption, resource, 0, projectedPerTick);
-            }
             for (var resource in decision.demand)
             {
                 if (decision.demand[resource] == 0) { continue; }
                 var projectedPerTick = decision.demand[resource] / decision.maxTime;
-                ajk.util.ensureKeyAndModify(this.consumption, resource, 0, projectedPerTick);
+                this.log.detail('Purchase of ' + decision.optionData.identifier + ' consumes a projected ' + projectedPerTick + ' ' + resource + '(weighted ' + weight + ')');
+                ajk.util.ensureKeyAndModify(this.consumption, resource, 0, projectedPerTick * weight);
             }
         },
 
@@ -367,17 +347,9 @@ ajk.core = {
             Object.keys(this.consumption).forEach((r) => {
                 var c = this.consumption[r];
                 var p = this.production[r] || 0;
-                var u = c / p;
-                if (u == NaN)
-                {
-                    this.log.warn('Consumption and production are both zero - this should not happen');
-                    u = 0;
-                }
-                u = Math.min(1, u);
-                if (u < 0)
-                {
-                    this.log.warn('Resource utilization computed to be negative - this should not be possible');
-                }
+                var u = Math.min(1, c / p);
+                if (p == 0 && c == 0) { u = 0; }
+                this.log.detail('Based on production of ' + p + ' and consumption of ' + c + ' for ' + r + ', it has ' + Math.ceil(u * 100) + '% utilization');
                 this.utilization[r] = u;
             });
         },
@@ -386,6 +358,7 @@ ajk.core = {
         {
             this.priorityResourceDemand = {};
 
+            var consumptionWeight = 1;
             this.analysisData.priorityOrder.forEach((itemName) => {
                 this.log.debug('Acting on priority ' + itemName);
                 this.log.indent();
@@ -422,7 +395,7 @@ ajk.core = {
                         else
                         {
                             this.log.detail('Waiting on resources to ' + method);
-                            this.applyProjectedConsumption(opDecision);
+                            this.applyProjectedConsumption(opDecision, consumptionWeight);
                         }
                     }
                 }, null, true);
@@ -433,6 +406,8 @@ ajk.core = {
                 }
 
                 this.log.unindent();
+
+                consumptionWeight *= ajk.config.consumptionFalloff;
             });
         },
 
@@ -500,8 +475,7 @@ ajk.core = {
                     ajk.base.getSeason() != this.season);
         },
 
-
-        unsafeTick: function()
+        unsafeTick: function(forceRecompute)
         {
             var timerData = ajk.timer.start('Tick Execution');
             this.events = [];
@@ -512,7 +486,7 @@ ajk.core = {
             this.consumption = {};
             this.utilization = {};
 
-            var doRebuild = this.cacheNeedsUpdate();
+            var doRebuild = this.cacheNeedsUpdate() || forceRecompute;
             this.year = ajk.base.getYear();
             this.season = ajk.base.getSeason();
             this.successes = 0;
@@ -541,9 +515,6 @@ ajk.core = {
             this.applyAmbientProductionConsumption();
             timerData.interval('Collect Ambient Resource Production');
 
-            ajk.analysisModule.computeBottlenecks(this.analysisData, this.cache, this.itemData);
-            timerData.interval('Bottleneck Analysis');
-
             this.pursuePriority();
             timerData.interval('Pursue Priority');
 
@@ -553,8 +524,8 @@ ajk.core = {
             this.computeResourceUtilization();
             timerData.interval('Compute Utilization');
 
-            //ajk.jobs.assignFreeKittens();
-            timerData.interval('Job Assignment');
+            ajk.jobs.update(this.utilization);
+            timerData.interval('Kitten Management');
 
             ajk.statistics.update(
                 this.cache,
@@ -569,13 +540,13 @@ ajk.core = {
             timerData.end('UI Refresh');
         },
 
-        tick: function()
+        tick: function(forceRecompute)
         {
             var timestamp = new Date();
             this.log.debug('Starting tick at ' + timestamp.toUTCString());
             try
             {
-                this.unsafeTick();
+                this.unsafeTick(forceRecompute);
             }
             catch (e)
             {
@@ -585,12 +556,12 @@ ajk.core = {
         },
     },
 
-    simulateTick: function()
+    simulateTick: function(forceRecompute)
     {
         this.internal.log.info('Simulating tick');
         var pSimulate = ajk.base.simulate;
         ajk.base.simulate = true;
-        this.internal.tick();
+        this.internal.tick(forceRecompute);
         ajk.base.simulate = pSimulate;
     },
 
@@ -613,7 +584,7 @@ ajk.core = {
         if (doTick)
         {
             this.internal.log.info('Ticking every ' + ajk.config.tickFrequency + ' seconds');
-            this.internal.tickThread = setInterval(function() { ajk.core.internal.tick(); }, ajk.config.tickFrequency * 1000);
+            this.internal.tickThread = setInterval(function() { ajk.core.internal.tick(false); }, ajk.config.tickFrequency * 1000);
         }
 
         // Yeah yeah, singletons are gross, get over it

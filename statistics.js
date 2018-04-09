@@ -170,6 +170,7 @@ ajk.statistics = {
             // Update utilization
             for (var resource in utilization)
             {
+                if (utilization[resource] == Infinity) { continue; }
                 if (!this.data.utilization.hasOwnProperty(resource))
                 {
                     this.data.utilization[resource] = new this.ValueGroup();

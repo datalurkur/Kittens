@@ -50,9 +50,13 @@ ajk.cache = {
             'catnip': [5000, 0.1]
         },
 
-        productionOutput:
+        productionSpecial:
         {
-            'energy': function() { return ajk.base.getEnergyDelta(); },
+            'energy': function() { return ajk.base.getEnergyProd(); },
+        },
+        consumptionSpecial:
+        {
+            'energy': function() { return ajk.base.getEnergyCons(); },
         },
 
         explorationOrder:
@@ -113,13 +117,22 @@ ajk.cache = {
             return false;
         },
 
-        getNetProductionOf: function(resource)
+        getProductionOf: function(resource)
         {
-            if (this.productionOutput.hasOwnProperty(resource))
+            if (this.productionSpecial.hasOwnProperty(resource))
             {
-                return this.productionOutput[resource]();
+                return this.productionSpecial[resource]();
             }
-            return ajk.base.getProductionOf(resource) + ajk.base.getConsumptionOf(resource);
+            return ajk.base.getProductionOf(resource);
+        },
+
+        getConsumptionOf: function(resource)
+        {
+            if (this.consumptionSpecial.hasOwnProperty(resource))
+            {
+                return this.consumptionSpecial[resource]();
+            }
+            return ajk.base.getConsumptionOf(resource);
         },
 
         getBufferFor: function(resource)
@@ -283,14 +296,18 @@ ajk.cache = {
         {
             for (var resource in this.resourceCache)
             {
+                var prod = this.getProductionOf(resource);
+                var cons = this.getConsumptionOf(resource);
                 var rData       = this.resourceCache[resource];
-                rData.perTick   = this.getNetProductionOf(resource);
+                rData.perTick   = (prod + cons);
                 rData.available = Math.max(0, ajk.base.getResource(resource).value - rData.buffer);
             }
             // Haaaack
-            var energy = this.getNetProductionOf('energy');
-            this.resourceCache['energy'].perTick = energy;
-            this.resourceCache['energy'].available = energy;
+            var energyProd = this.getProductionOf('energy');
+            var energyCons = this.getConsumptionOf('energy');
+            var net = (energyProd + energyCons);
+            this.resourceCache['energy'].perTick   = net;
+            this.resourceCache['energy'].available = net;
         },
 
         cacheHuntingData: function()

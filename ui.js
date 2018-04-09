@@ -316,6 +316,8 @@ ajk.ui = {
         });
 
         // Resource utilization graph
+        /*
+        // Not super interesting
         var utilizationData = {
             title:         'resources utilization',
             padding:        [this.graphOptions.leftPadding, this.graphOptions.rightPadding, 32, 32],
@@ -335,7 +337,8 @@ ajk.ui = {
             labels:         [],
             timeDomain:     data.timeDomain,
         };
-        filteredResources.forEach((r) => {
+        for (var r in data.utilization)
+        {
             // Update y domain
             utilizationData.yDomain = [
                 Math.min(utilizationData.yDomain[0], data.utilization[r].yDomain[0]),
@@ -362,7 +365,8 @@ ajk.ui = {
                 color: color,
                 y:     lastValue[1]
             });
-        });
+        };
+        */
 
         // Event graph
         var eventData = {
@@ -380,7 +384,59 @@ ajk.ui = {
             timeDomain:     data.timeDomain,
         };
 
-        this.cachedGraphData = [perTickData, eventData, utilizationData];
+        // Resource utilization
+        /*
+        var utilizationData = {
+            title:         'resources utilization',
+            padding:        [this.graphOptions.leftPadding, this.graphOptions.rightPadding, 32, 32],
+            baseTimeDomain: data.timeDomain,
+            xTicks:         7,
+            type:           'lineGraph',
+            parent:         'utilizationGraph',
+
+            // LineGraph Specific
+            yTicks:         5,
+            interpolation:  this.graphOptions.interpolation,
+            yTickFormat:    function(d) { return Math.ceil(d * 100) + '%'; },
+
+            // Computed
+            yDomain:        [0, 1],
+            lines:          [],
+            labels:         [],
+            timeDomain:     data.timeDomain,
+        };
+        for (var r in data.utilization)
+        {
+            // Update y domain
+            utilizationData.yDomain = [
+                Math.min(utilizationData.yDomain[0], data.utilization[r].yDomain[0]),
+                Math.max(utilizationData.yDomain[1], data.utilization[r].yDomain[1]),
+            ];
+
+            // Update lines
+            var color = this.resourceInfo[r].color;
+            var sets = data.utilization[r].sets;
+            sets.forEach((s) => {
+                utilizationData.lines.push({
+                    color:  color,
+                    values: s.values,
+                });
+            });
+
+            // Update labels
+            if (sets.length == 0) { return; }
+            var lastSet   = sets[sets.length - 1];
+            if (lastSet.values.length == 0) { return; }
+            var lastValue = lastSet.values[lastSet.values.length - 1];
+            utilizationData.labels.push({
+                label: r,
+                color: color,
+                y:     lastValue[1]
+            });
+        };
+        */
+
+        this.cachedGraphData = [perTickData, eventData];
     },
 
     buildGraphs: function()
@@ -424,7 +480,8 @@ ajk.ui = {
         $('.inlineAccordion').click(function() { ajk.ui.togglePanel(this); });
 
         // Connect controls to callbacks and set initial values
-        $('#simulateButton').click(function() { ajk.core.simulateTick(); });
+        $('#simulateTickButton').click(function() { ajk.core.simulateTick(true); });
+        $('#simulateTockButton').click(function() { ajk.core.simulateTick(false); });
 
         var simToggle = $('#simulateToggle');
         simToggle.click(function() { ajk.base.simulating = this.checked; });

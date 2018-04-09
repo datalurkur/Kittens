@@ -43,10 +43,6 @@ ajk.analysisModule = {
         this.internal.log.debug('Performing analysis postprocessing pass');
         this.internal.postprocessors.forEach((filter) => { filter(data, cache, itemMap, this.internal.log); });
     },
-    computeBottlenecks: function(data, cache, itemMap)
-    {
-        // TODO
-    },
     addPreprocessor:  function(operation) { this.internal.preprocessors.push(operation);  },
     addPostprocessor: function(operation) { this.internal.postprocessors.push(operation); },
 };

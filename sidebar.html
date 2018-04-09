@@ -1,6 +1,7 @@
 <button class="accordion">Script Control</button>
 <div class="accordionPanel">
-    <input type="button" id="simulateButton" value="Simulate One Tick" style="width: 200px;" />
+    <input type="button" id="simulateTickButton" value="Simulate Tick" style="width: 100px;" />
+    <input type="button" id="simulateTockButton" value="Simulate Tock" style="width: 100px;" />
     <br/>
     <input id="simulateToggle" type="checkbox" />
     <label for="simulateToggle">Simulating</label>
@@ -9,7 +10,8 @@
     <label for="tickToggle">Ticking</label>
     <br/>
     <label for="logLevelSelect">Log Level</label>
-    <select id="logLevelSelect">
+    <br/>
+    <select id="logLevelSelect" style="width: 200px">
         <option value="0">Errors Only</option>
         <option value="1">Errors and Warnings</option>
         <option value="2">Info</option>

@@ -113,6 +113,7 @@ ajk.decisionTreeFactory = {
     internal:
     {
         log: ajk.log.addChannel('dtree', false),
+
         buildOptionNode: function(cache, option, parentResourceNode)
         {
             this.log.detail('Building decision tree for option: ' + option.method);
@@ -135,9 +136,11 @@ ajk.decisionTreeFactory = {
                 maxTime:            0,    // The number of ticks until the most expensive dependency is met
                 bottleneck:         null, // The resource that is most in-demand for fulfillment of this node
 
-                // Accumulator
+                // Accumulators
                 consumption:        {},
                 consumptionApplied: false,
+                finiteWaitTimes:    {},
+                infiniteWaitTimes:  {},
 
                 identifier: function()
                 {
@@ -184,16 +187,20 @@ ajk.decisionTreeFactory = {
 
                     if (this.parentResource == null)
                     {
-                        this.actionCount = 1;
-                        this.consumption = {};
+                        this.actionCount       = 1;
+                        this.consumption       = {};
+                        this.finiteWaitTimes   = {};
+                        this.infiniteWaitTimes = {};
                     }
                     else
                     {
-                        this.actionCount = Math.ceil(this.parentResource.deficit / this.optionData.ratio);
-                        this.consumption = this.parentResource.consumption;
+                        this.actionCount       = Math.ceil(this.parentResource.deficit / this.optionData.ratio);
+                        this.consumption       = this.parentResource.consumption;
+                        this.finiteWaitTimes   = this.parentResource.finiteWaitTimes;
+                        this.infiniteWaitTimes = this.parentResource.infiniteWaitTimes;
                     }
-                    this.log.detail('Costed option at ' + this.actionCount + ' actions required');
 
+                    this.maxTime = 0;
                     this.dependencies.forEach((dep) => {
                         dep.update();
                         this.capacityLimiters = this.capacityLimiters.concat(dep.capacityLimiters);
@@ -240,24 +247,30 @@ ajk.decisionTreeFactory = {
                 multiplier:          1,        // The full price is the base cost times this number
                 consumed:            0,        // How much of the available resource pool was used to fulfill the cost
                 deficit:             0,        // How much of the full price is left to be produced
-                baseTime:            0,        // The number of ticks until this node is fulfilled by waiting
+                baseTime:            0,        // The number of ticks until this node's deficit is fulfilled by base production
+                adjustedTime:        0,        // The number of ticks until this node is fulfilled, including existing wait times
                 decision:            null,     // The selected option to optimize fulfillment of this node
                 decisionTime:        Infinity, // The number of ticks until this node is fulfilled
                 capacityLimiters:    [],       // A list of resources whose capacity constraints are limiting the effectiveness of this node
                 capacityBlockers:    [],       // A list of resources whose capacity constraints are preventing the fulfillment of this node
                 bottleneck:          null,     // The resource that is most in-demand for fulfillment of this node
 
-                // Accumulator
+                // Accumulators
                 consumption:        {},
                 consumptionApplied: false,
+                finiteWaitTimes:    {},
+                infiniteWaitTimes:  {},
+                waitTimeApplied:    false,
 
                 applyConsumption: function(recursive)
                 {
                     if (this.consumptionApplied) { this.log.error('Applying consumption twice'); return; }
                     this.consumptionApplied = true;
 
+                    var resourceData = cache.getResourceData(this.costData.resourceName);
+
                     // Compute properties dependent on accumulated resource consumption at this decision
-                    var adjustedAmountAvailable = cache.getResourceData(this.costData.resourceName).available;
+                    var adjustedAmountAvailable = resourceData.available;
                     var amountRequired = this.costData.price * this.multiplier;
                     if (this.consumption.hasOwnProperty(this.costData.resourceName))
                     {
@@ -272,7 +285,45 @@ ajk.decisionTreeFactory = {
                     this.consumed = amountRequired - this.deficit;
                     ajk.util.ensureKeyAndModify(this.consumption, this.costData.resourceName, 0, this.consumed);
 
-                    if (recursive && this.decision != null) { this.decision.applyConsumption(recursive); }
+                    // Compute time-to-completion based on deficit
+                    if (this.deficit == 0)
+                    {
+                        this.baseTime     = 0;
+                        this.adjustedTime = 0;
+                        this.log.trace('Resource is immediately available');
+                    }
+                    else
+                    {
+                        var rData = cache.getResourceData(this.costData.resourceName);
+                        this.baseTime = this.deficit / rData.perTick;
+                        if ((this.infiniteWaitTimes[this.costData.resourceName] || 0) > 0)
+                        {
+                            this.adjustedTime = Infinity;
+                        }
+                        else
+                        {
+                            var existingWait  = this.finiteWaitTimes[this.costData.resourceName] || 0;
+                            this.adjustedTime = this.baseTime + existingWait;
+                        }
+
+                        if (this.baseTime < 0) { this.baseTime = Infinity; }
+                        this.log.trace('It will be ' + this.baseTime + ' base ticks until quantity ' + this.deficit + ' is produced');
+                        this.log.trace('Adjusted wait time is ' + this.adjustedTime);
+                    }
+
+                    if (recursive)
+                    {
+                        if (this.decision != null)
+                        {
+                            // We're acquiring this resource via other means
+                            this.decision.applyConsumption(recursive);
+                        }
+                        else
+                        {
+                            // Add wait time for this resource's production
+                            this.applyWaitTime();
+                        }
+                    }
                 },
 
                 rewindConsumption: function(recursive)
@@ -280,9 +331,53 @@ ajk.decisionTreeFactory = {
                     if (!this.consumptionApplied) { this.log.error('Rewinding consumption twice'); return; }
                     this.consumptionApplied = false;
 
-                    if (recursive && this.decision != null) { this.decision.rewindConsumption(recursive); }
+                    if (recursive)
+                    {
+                        if (this.decision != null)
+                        {
+                            this.decision.rewindConsumption(recursive);
+                        }
+                        else
+                        {
+                            this.rewindWaitTime();
+                        }
+                    }
 
                     this.consumption[this.costData.resourceName] -= this.consumed;
+                },
+
+                applyWaitTime: function()
+                {
+                    if (this.waitTimeApplied) { this.log.error('Double-applying wait time'); return; }
+                    this.waitTimeApplied = true;
+
+                    if (this.baseTime == Infinity)
+                    {
+                        this.log.trace('Applying infinite wait time');
+                        ajk.util.ensureKeyAndModify(this.infiniteWaitTimes, this.costData.resourceName, 0, 1);
+                    }
+                    else if (this.baseTime > 0)
+                    {
+                        this.log.trace('Applying wait time of ' + this.baseTime);
+                        ajk.util.ensureKeyAndModify(this.finiteWaitTimes, this.costData.resourceName, 0, this.baseTime);
+                    }
+                },
+
+                rewindWaitTime: function()
+                {
+                    if (!this.waitTimeApplied) { this.log.error('Double-rewinding wait time'); return; }
+                    this.waitTimeApplied = false;
+
+                    if (this.baseTime == Infinity)
+                    {
+                        this.log.trace('Rewinding infinite wait time');
+                        ajk.util.ensureKeyAndModify(this.infiniteWaitTimes, this.costData.resourceName, 0, -1);
+                    }
+                    else if (this.baseTime > 0)
+                    {
+                        this.log.trace('Rewinding wait time of ' + this.baseTime);
+                        ajk.util.ensureKeyAndModify(this.finiteWaitTimes, this.costData.resourceName, 0, -this.baseTime);
+                    }
                 },
 
                 traverse: function(opCallback, resCallback, leavesFirst)
@@ -301,13 +396,17 @@ ajk.decisionTreeFactory = {
                     // Compute properties dependent on the parent node
                     if (this.parentOption == null)
                     {
-                        this.multiplier  = 1;
-                        this.consumption = {};
+                        this.multiplier        = 1;
+                        this.consumption       = {};
+                        this.infiniteWaitTimes = {};
+                        this.finiteWaitTimes   = {};
                     }
                     else
                     {
-                        this.multiplier  = this.parentOption.actionCount;
-                        this.consumption = this.parentOption.consumption;
+                        this.multiplier        = this.parentOption.actionCount;
+                        this.consumption       = this.parentOption.consumption;
+                        this.infiniteWaitTimes = this.parentOption.infiniteWaitTimes;
+                        this.finiteWaitTimes   = this.parentOption.finiteWaitTimes;
                     }
 
                     // Check for capacity blockers
@@ -321,18 +420,7 @@ ajk.decisionTreeFactory = {
                     this.applyConsumption(false);
 
                     // Compute time-to-completion based on deficit
-                    if (this.deficit == 0)
-                    {
-                        this.baseTime = 0;
-                        this.log.trace('Resource is immediately available');
-                    }
-                    else
-                    {
-                        this.baseTime = this.deficit / rData.perTick;
-                        if (this.baseTime < 0) { this.baseTime = Infinity; }
-                        this.log.trace('It will be ' + this.baseTime + ' ticks until quantity ' + this.deficit + ' is produced');
-                    }
-                    this.decisionTime = this.baseTime;
+                    this.decisionTime = this.adjustedTime;
 
                     // Update the dependent decision trees
                     this.options.forEach((opt) => {
@@ -369,15 +457,16 @@ ajk.decisionTreeFactory = {
                         }
                     });
 
-                    // Apply resource consumption for the decision made
+                    // Apply resource consumption for the decision made (or apply wait time for this leaf)
                     // Plumb bottlneck while we're at it
                     if (this.decision != null)
                     {
                         this.decision.applyConsumption(true);
                         if (this.decision.bottleneck != null) { this.bottleneck = this.decision.bottleneck; }
                     }
-                    else if (this.deficit > 0)
+                    else
                     {
+                        this.applyWaitTime();
                         this.bottleneck = this;
                     }
 
@@ -426,6 +515,25 @@ ajk.decisionTreeFactory = {
     {
         var combinedCostData = ajk.costDataFactory.buildCombinedCostData(treeA.optionData, treeB.optionData);
         var combinedTree = this.buildDecisionTree(cache, combinedCostData);
-        return (combinedTree.maxTime > treeA.maxTime && combinedTree.maxTime > treeB.maxTime)
+        var competition = (combinedTree.maxTime > treeA.maxTime && combinedTree.maxTime > treeB.maxTime)
+
+        // DEBUG
+        this.internal.log.debug('Competition check for ' + treeA.identifier() + ' and ' + treeB.identifier());
+        this.internal.log.indent();
+        this.internal.log.debug('Independent costs of ' + treeA.maxTime + ' and ' + treeB.maxTime);
+        this.internal.log.debug('Combined cost of ' + combinedTree.maxTime);
+        this.internal.log.debug('' + (competition) ? 'COMPETITION!' : 'no competition');
+        // Demand check
+        for (var r in treeA.demand)
+        {
+            if (treeB.demand.hasOwnProperty(r) && !competition)
+            {
+                this.internal.log.warn('Something is fishy in the competition checks (items not found to be in competition but both have a demand for ' + r + ')');
+                break;
+            }
+        }
+        this.internal.log.unindent();
+
+        return competition;
     },
 };

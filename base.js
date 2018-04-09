@@ -18,14 +18,19 @@ var ajk = {
         // Resources
         getAllResources:    function()            { return gamePage.resPool.resources;                                     },
         getResource:        function(resName)     { return gamePage.resPool.get(resName);                                  },
-        getEnergyDelta:     function()            { return gamePage.resPool.getEnergyDelta();                              },
+        getEnergyProd:      function()            { return gamePage.resPool.energyProd;                                    },
+        getEnergyCons:      function()            { return gamePage.resPool.energyCons;                                    },
         getProductionOf:    function(resName)     { return gamePage.getResourcePerTick(resName);                           },
         getConsumptionOf:   function(resName)     { return gamePage.getResourcePerTickConvertion(resName);                 },
 
         // Village stuff
         getFreeWorkers:     function()            { return gamePage.village.getFreeKittens();                              },
         getJob:             function(jobName)     { return gamePage.village.getJob(jobName);                               },
+        getAllJobs:         function(jobName)     { return gamePage.village.jobs;                                          },
         getHunterRatio:     function()            { return gamePage.getEffect('hunterRatio') + 1;                          },
+        censusAvailable:    function()            { return gamePage.science.get('civil').researched;                       },
+        getLeader:          function()            { return gamePage.village.leader;                                        },
+        getKittenInfo:      function()            { return gamePage.village.sim.kittens;                                   },
 
         // Trade stuff
         getAllRaces:        function()            { return gamePage.diplomacy.races;                                       },
@@ -41,6 +46,7 @@ var ajk = {
         getCraft:           function(craftName)   { return gamePage.workshop.getCraft(craftName);                          },
         getCraftRatio:      function()            { return 1 + gamePage.getCraftRatio();                                   },
         getCraftAllAmount:  function(craftName)   { return gamePage.workshop.getCraftAllCount(craftName);                  },
+        getWorkshopUpgrade: function(upgradeName) { return gamePage.workshop.get(upgradeName);                             },
 
         // Religion stuff
         getReligionUpgrade: function(upgradeName) { return gamePage.religion.getRU(upgradeName);                           },
@@ -51,6 +57,18 @@ var ajk = {
         getObserveButton:   function()            { return gamePage.calendar.observeBtn;                                   },
         getYear:            function()            { return gamePage.calendar.year;                                         },
         getPerk:            function(perkName)    { return gamePage.prestige.getPerk(perkName);                            },
+
+        // Special hackery
+        // This is used for determining resource production vectors for kittens
+        // (without having to duplicate all the fucking effect stacks in the kittens code)
+        updateKittenProduction: function()
+        {
+            gamePage.village.updateResourceProduction();
+        },
+        getAccurateResPerTick: function(resource)
+        {
+            return gamePage.calcResourcePerTick(resource);
+        },
 
         // Operations
         switchToTab: function(tab)
@@ -77,10 +95,31 @@ var ajk = {
             gamePage.ui.activeTabId = tabName;
             gamePage.render();
         },
+        clearJobs: function()
+        {
+            if (this.simulate) { return; }
+            gamePage.village.clearJobs();
+        },
         assignJob: function(jobName)
         {
             if (this.simulate) { return; }
-            gamePage.village.assignJob(this.getJob(job));
+            gamePage.village.assignJob(this.getJob(jobName));
+        },
+        makeLeader: function(kitten)
+        {
+            if (this.simulate) { return; }
+            // Copied from the kittens code to avoid doing a tab switch
+            if (gamePage.village.leader)
+            {
+                gamePage.village.leader.isLeader = false;
+            }
+            kitten.isLeader = true;
+            gamePage.village.leader = kitten;
+        },
+        optimizeJobs: function()
+        {
+            if (this.simulate) { return; }
+            gamePage.village.optimizeJobs();
         },
         hunt: function(hunts)
         {
@@ -138,7 +177,7 @@ var ajk = {
         },
         trade: function(race, amount)
         {
-            if (this.simulate) { return; }
+            if (this.simulate) { return {}; }
             if (ajk.config.useAccurateTrading)
             {
                 return this.tradeHack(race, amount);
@@ -195,20 +234,31 @@ var ajk = {
     },
 };
 
-// TODO - parse config at launch and behave accordingly
 ajk.config = {
+    // Util config and flags
     performBackup:           false,
     detailedLogsOnError:     false,
     detailedLogsOnSuccess:   false,
     ticking:                 false,
 
+    // General script loop control
     tickFrequency:           10,
+
+    // Resource conversion controls
     catpowerConversionRatio: 0.25,
     conversionRatio:         0.1,
     conversionMaxRatio:      0.97,
 
+    // Internal game-hack controls
     useAccurateHunting:      true, // Use copied source in order to get more data about hunting results
     useAccurateTrading:      true, // Use copied source in order to get more data about trading results
+
+    // Utilization variables
+    consumptionFalloff:      0.5,
+
+    // Job and kitten management
+    kittenFloaterRatio:      0.2, // Float this many kittens from job to job
+    utilizationThreshold:    0.5, // Above this utilization ratio, move floaters to produce the resource in question
 };
 
 ajk.util = {
@@ -267,7 +317,8 @@ ajk.log = {
         printLogsToConsole: function(ignoreLevel)
         {
             this.logQueue.forEach((msgData) => {
-                if ((ignoreLevel || this.logLevel >= msgData.level) && (msgData.channel == undefined || this.channelActive(msgData.channel)))
+                if ((ignoreLevel || this.logLevel >= msgData.level) &&
+                    (msgData.channel == undefined || msgData.level == this.errorLevel || this.channelActive(msgData.channel)))
                 {
                     var marker      = '[' + msgData.channel.padStart(this.channelNameLength) + '] ';
                     var emptyMarker = ' '.repeat(marker.length);
@@ -293,8 +344,9 @@ ajk.log = {
         },
     },
 
-    toggleChannel: function(channelName, isOn)
+    toggleChannel: function(channelName)
     {
+        var isOn = !this.internal.channelActive(channelName);
         var channelMask = this.internal.channels[channelName];
         if (isOn)
         {
