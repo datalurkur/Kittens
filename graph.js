@@ -10,6 +10,10 @@ ajk.graphFactory = {
             {
                 this.buildEventGraph(d);
             }
+            else if (d.type == 'radarGraph')
+            {
+                this.buildRadarGraph(d);
+            }
         });
     },
 

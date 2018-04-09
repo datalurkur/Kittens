@@ -385,56 +385,16 @@ ajk.ui = {
         };
 
         // Resource utilization
-        /*
         var utilizationData = {
-            title:         'resources utilization',
-            padding:        [this.graphOptions.leftPadding, this.graphOptions.rightPadding, 32, 32],
-            baseTimeDomain: data.timeDomain,
-            xTicks:         7,
-            type:           'lineGraph',
+            title:         'resource utilization',
+            padding:        [32, 32, 32, 32],
+            type:           'radarGraph',
             parent:         'utilizationGraph',
 
-            // LineGraph Specific
-            yTicks:         5,
-            interpolation:  this.graphOptions.interpolation,
-            yTickFormat:    function(d) { return Math.ceil(d * 100) + '%'; },
+            // RadarGraph Specific
 
             // Computed
-            yDomain:        [0, 1],
-            lines:          [],
-            labels:         [],
-            timeDomain:     data.timeDomain,
         };
-        for (var r in data.utilization)
-        {
-            // Update y domain
-            utilizationData.yDomain = [
-                Math.min(utilizationData.yDomain[0], data.utilization[r].yDomain[0]),
-                Math.max(utilizationData.yDomain[1], data.utilization[r].yDomain[1]),
-            ];
-
-            // Update lines
-            var color = this.resourceInfo[r].color;
-            var sets = data.utilization[r].sets;
-            sets.forEach((s) => {
-                utilizationData.lines.push({
-                    color:  color,
-                    values: s.values,
-                });
-            });
-
-            // Update labels
-            if (sets.length == 0) { return; }
-            var lastSet   = sets[sets.length - 1];
-            if (lastSet.values.length == 0) { return; }
-            var lastValue = lastSet.values[lastSet.values.length - 1];
-            utilizationData.labels.push({
-                label: r,
-                color: color,
-                y:     lastValue[1]
-            });
-        };
-        */
 
         this.cachedGraphData = [perTickData, eventData];
     },
