@@ -67,7 +67,7 @@ var ajk = {
         },
         getAccurateResPerTick: function(resource)
         {
-            return gamePage.calcResourcePerTick(resource);
+            return gamePage.calcResourcePerTick(resource) + gamePage.getResourcePerTickConvertion(resource);
         },
 
         // Operations

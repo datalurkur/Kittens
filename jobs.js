@@ -25,6 +25,7 @@ ajk.jobs = {
             'scholar':    0.1,
             'geologist':  0.2,
             'priest':     0.1,
+            'engineer':   0,
         },
 
         chooseLeader: function()
@@ -153,6 +154,7 @@ ajk.jobs = {
             });
 
             // (4) Apply floating positions based on utilization
+            var floatingJobs = jobPriorityOrder.filter(j => j != 'farmer'); // We don't need floating farmers
             if (floaters > 0)
             {
                 jobPriorityOrder.forEach((jobName) => {
