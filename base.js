@@ -61,10 +61,6 @@ var ajk = {
         // Special hackery
         // This is used for determining resource production vectors for kittens
         // (without having to duplicate all the fucking effect stacks in the kittens code)
-        updateKittenProduction: function()
-        {
-            gamePage.village.updateResourceProduction();
-        },
         getAccurateResPerTick: function(resource)
         {
             return gamePage.calcResourcePerTick(resource) + gamePage.getResourcePerTickConvertion(resource);
@@ -95,15 +91,52 @@ var ajk = {
             gamePage.ui.activeTabId = tabName;
             gamePage.render();
         },
+
+        // Various job hacks
         clearJobs: function()
         {
             if (this.simulate) { return; }
-            gamePage.village.clearJobs();
+            gamePage.village.clearJobs(true);
         },
-        assignJob: function(jobName)
+        assignJobs: function(job, number)
+        {
+            if (this.simulate) { return true; }
+            if (number + job.value > gamePage.village.getJobLimit(job.name)) { return false; }
+            var numAssigned = 0;
+            var allKittens = gamePage.village.sim.kittens;
+            for (var i = 0; i < allKittens.length; ++i)
+            {
+                if (allKittens[i].job == null)
+                {
+                    allKittens[i].job = job.name;
+                    job.value += 1;
+                    numAssigned += 1;
+                }
+                if (numAssigned >= number) { break; }
+            }
+            return (numAssigned == number);
+        },
+        removeJobs: function(job, number)
+        {
+            if (this.simulate) { return true; }
+            var numRemoved = 0;
+            var allKittens = gamePage.village.sim.kittens;
+            for (var i = 0; i < allKittens.length; ++i)
+            {
+                if (allKittens[i].job == job.name)
+                {
+                    allKittens[i].job = null;
+                    job.value -= 1;
+                    numRemoved += 1;
+                }
+                if (numRemoved >= number) { break; }
+            }
+            return (numRemoved == number);
+        },
+        updateVillageResourceProduction: function()
         {
             if (this.simulate) { return; }
-            gamePage.village.assignJob(this.getJob(jobName));
+            gamePage.village.updateResourceProduction();
         },
         makeLeader: function(kitten)
         {
@@ -242,7 +275,7 @@ ajk.config = {
     ticking:                 false,
 
     // General script loop control
-    tickFrequency:           10,
+    tickFrequency:           5,
 
     // Resource conversion controls
     catpowerConversionRatio: 0.25,
@@ -258,7 +291,7 @@ ajk.config = {
 
     // Job and kitten management
     kittenFloaterRatio:      0.2, // Float this many kittens from job to job
-    utilizationThreshold:    0.5, // Above this utilization ratio, move floaters to produce the resource in question
+    rebalanceFrequency:      10,  // Rebalance jobs every N updates
 };
 
 ajk.util = {

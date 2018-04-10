@@ -526,7 +526,7 @@ ajk.core = {
             this.computeResourceUtilization();
             timerData.interval('Compute Utilization');
 
-            ajk.jobs.update(this.utilization);
+            ajk.jobs.update(doRebuild, this.utilization);
             timerData.interval('Kitten Management');
 
             ajk.statistics.update(

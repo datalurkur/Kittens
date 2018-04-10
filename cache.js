@@ -56,7 +56,7 @@ ajk.cache = {
         },
         consumptionSpecial:
         {
-            'energy': function() { return ajk.base.getEnergyCons(); },
+            'energy': function() { return -ajk.base.getEnergyCons(); },
         },
 
         explorationOrder:
@@ -302,12 +302,6 @@ ajk.cache = {
                 rData.perTick   = (prod + cons);
                 rData.available = Math.max(0, ajk.base.getResource(resource).value - rData.buffer);
             }
-            // Haaaack
-            var energyProd = this.getProductionOf('energy');
-            var energyCons = this.getConsumptionOf('energy');
-            var net = (energyProd + energyCons);
-            this.resourceCache['energy'].perTick   = net;
-            this.resourceCache['energy'].available = net;
         },
 
         cacheHuntingData: function()
