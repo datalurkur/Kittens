@@ -378,6 +378,21 @@ ajk.core = {
                     {
                         this.tradeUpTo(opDecision.optionData.extraData, opDecision.actionCount);
                     }
+                    else if (method == 'sacrifice')
+                    {
+                        if (opDecision.maxTime == 0)
+                        {
+                            var sacItem = opDecision.optionData.extraData;
+                            if (!sacItem.controller.sacrifice(sacItem.model, opDecision.actionCount))
+                            {
+                                this.log.error('Failed to ' + opDecision.identifier() + ' ' + opDecision.actionCount + ' times');
+                            }
+                            else
+                            {
+                                this.log.info(method + 'd ' + opDecision.actionCount + ' ' + opDecision.optionData.identifier);
+                            }
+                        }
+                    }
                     else if (method == 'purchase' || method == 'explore')
                     {
                         var item = opDecision.optionData.extraData;

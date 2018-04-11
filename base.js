@@ -53,6 +53,7 @@ var ajk = {
         getZigguratUpgrade: function(upgradeName) { return gamePage.religion.getZU(upgradeName);                           },
 
         // Misc stuff
+        getBuilding:        function(bldName)     { return gamePage.bld.get(bldName);                                      },
         getSeason:          function()            { return gamePage.calendar.season;                                       },
         getObserveButton:   function()            { return gamePage.calendar.observeBtn;                                   },
         getYear:            function()            { return gamePage.calendar.year;                                         },

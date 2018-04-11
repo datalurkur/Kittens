@@ -76,6 +76,33 @@ ajk.costDataFactory = {
                 }
             }
 
+            if (resource == 'tears')
+            {
+                this.log.detail('Adding sacrifice option for tears');
+                data.options.push(this.buildOptionCostData(
+                    'unicorns',
+                    cache,
+                    'sacrifice',
+                    [],
+                    [['unicorns', 2500]],
+                    ajk.base.getBuilding('ziggurat').val,
+                    ajk.base.religionTab.sacrificeBtn
+                ));
+            }
+            else if (resource == 'timeCrystal')
+            {
+                this.log.detail('Adding sacrifice option for time crystals');
+                data.options.push(this.buildOptionCostData(
+                    'alicorns',
+                    cache,
+                    'sacrifice',
+                    [],
+                    [['alicorns', 25]],
+                    1,
+                    ajk.base.religionTab.sacrificeAlicornBtn
+                ));
+            }
+
             this.log.unindent();
             return data;
         },
