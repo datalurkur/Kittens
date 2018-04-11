@@ -381,7 +381,9 @@ ajk.core = {
                     else if (method == 'purchase' || method == 'explore')
                     {
                         var item = opDecision.optionData.extraData;
-                        if (ajk.base.readyForPurchase(item))
+                        var zeroTime = opDecision.maxTime == 0;
+                        var purchaseReady = ajk.base.readyForPurchase(item);
+                        if (zeroTime && purchaseReady)
                         {
                             if (!ajk.base.purchaseItem(item))
                             {
@@ -393,6 +395,10 @@ ajk.core = {
                                 this.addEvent(item, opDecision.optionData.identifier, iData.type, iData.significance);
                                 this.successes += 1;
                             }
+                        }
+                        else if (!zeroTime && purchaseReady && method != 'explore')
+                        {
+                            this.log.warn('Item is ready for purchase, but has nonzero time, investigate');
                         }
                         else
                         {

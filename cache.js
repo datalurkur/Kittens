@@ -266,7 +266,7 @@ ajk.cache = {
 
                 this.resourceCache[res.name] = {
                     unlocked:  this.resourceUnlocked(res.name),
-                    max:       (res.maxValue == 0) ? Infinity : res.maxValue;
+                    max:       (res.maxValue == 0) ? Infinity : res.maxValue,
                 };
             });
             this.resourceCache['energy'] = {
