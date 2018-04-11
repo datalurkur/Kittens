@@ -216,7 +216,7 @@ ajk.cache = {
             }
             else if (race.name == 'spiders')
             {
-                var shipDeficit = ajk.base.getResource('ship').value - 100;
+                var shipDeficit = 100 - ajk.base.getResource('ship').value;
                 if (shipDeficit > 0)
                 {
                     return ['accumulate', ['ship', shipDeficit]];

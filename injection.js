@@ -13,6 +13,7 @@ const scripts = [
     {name: 'graph.js', external: false, asModule: false},
     {name: 'ui.js', external: false, asModule: false},
     {name: 'easteregg.js', external: false, asModule: false},
+    {name: 'start.js', external: false, asModule: false},
 ];
 
 const loadScript = function(index)

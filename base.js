@@ -268,6 +268,8 @@ var ajk = {
 };
 
 ajk.config = {
+    tickOnLoad:              true,
+
     // Util config and flags
     performBackup:           false,
     detailedLogsOnError:     false,
