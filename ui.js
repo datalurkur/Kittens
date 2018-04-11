@@ -15,6 +15,11 @@ ajk.ui = {
             'color': 'lime',
             'on'   : true,
         },
+        'thorium':
+        {
+            'color': 'chartreuse',
+            'on'   : false,
+        },
         'spice':
         {
             'color': 'teal',

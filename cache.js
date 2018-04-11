@@ -45,11 +45,6 @@ ajk.cache = {
             },
         ],
 
-        bufferConfig:
-        {
-            'catnip': [5000, 0.1]
-        },
-
         productionSpecial:
         {
             'energy': function() { return ajk.base.getEnergyProd(); },
@@ -133,14 +128,6 @@ ajk.cache = {
                 return this.consumptionSpecial[resource]();
             }
             return ajk.base.getConsumptionOf(resource);
-        },
-
-        getBufferFor: function(resource)
-        {
-            if (!this.bufferConfig.hasOwnProperty(resource)) { return 0; }
-            var bufferData = this.bufferConfig[resource];
-            var scaledBuffer = ajk.base.getResource(resource).maxValue * bufferData[1];
-            return Math.max(scaledBuffer, bufferData[0]);
         },
 
         matchEffect: function(item, effect, effectQuantity, typeIndex)
@@ -277,16 +264,13 @@ ajk.cache = {
             ajk.base.getAllResources().forEach((res) => {
                 this.log.detail('Caching data for resource ' + res.name);
 
-                var buffer = this.getBufferFor(res.name);
                 this.resourceCache[res.name] = {
                     unlocked:  this.resourceUnlocked(res.name),
-                    buffer:    buffer,
-                    max:       (res.maxValue == 0) ? Infinity : Math.max(0, res.maxValue - buffer),
+                    max:       (res.maxValue == 0) ? Infinity : res.maxValue;
                 };
             });
             this.resourceCache['energy'] = {
                 unlocked: true,
-                buffer:   0,
                 max:      Infinity
             };
             this.cacheResourcePoolData();
@@ -300,7 +284,7 @@ ajk.cache = {
                 var cons = this.getConsumptionOf(resource);
                 var rData       = this.resourceCache[resource];
                 rData.perTick   = (prod + cons);
-                rData.available = Math.max(0, ajk.base.getResource(resource).value - rData.buffer);
+                rData.available = ajk.base.getResource(resource).value;
             }
         },
 
@@ -453,7 +437,7 @@ ajk.cache = {
 
     refresh: function()
     {
-        // Refresh only raw amounts and reserve buffers
+        // Refresh only raw amounts
         this.internal.cacheResourcePoolData();
 
         // Rebuild hunting data

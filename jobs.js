@@ -49,6 +49,11 @@ ajk.jobs = {
             }
         },
 
+        optimizeJobs: function()
+        {
+            if (ajk.base.censusAvailable()) { ajk.base.optimizeJobs(); }
+        },
+
         updateJobTable: function()
         {
             this.cachedJobs = {};
@@ -56,9 +61,10 @@ ajk.jobs = {
                 if (j.unlocked && j.name != 'engineer')
                 {
                     this.cachedJobs[j.name] = {
-                        jobData:   j,
-                        produces:  Object.keys(j.modifiers),
-                        producers: j.value
+                        jobData:                j,
+                        produces:               Object.keys(j.modifiers),
+                        producers:              j.value,
+                        nullProductionComputed: false
                     };
                 }
             });
@@ -66,41 +72,53 @@ ajk.jobs = {
 
         computeProductionVectors: function()
         {
-            var totalKittens   = ajk.base.getKittenInfo().length;
             this.updateJobTable();
-
-            // Collect null production
             this.cachedResources = {};
-            ajk.base.clearJobs();
-            ajk.base.updateVillageResourceProduction();
-            for (var jobName in this.cachedJobs)
+
+            var totalKittens = ajk.base.getKittenInfo().length;
+            var jobList      = Object.keys(this.cachedJobs);
+
+            // Check if it event makes sense to do this computation
+            if (jobList < 2 || totalKittens == 0)
             {
-                var job = this.cachedJobs[jobName];
-                job.produces.forEach((r) => {
-                    this.cachedResources[r] = {};
-                    this.cachedResources[r].nullProduction = ajk.base.getAccurateResPerTick(r);
+                jobList.forEach((j) => {
+                    var job = this.cachedJobs[j];
+                    this.cachedJobs[j].produces.forEach((r) => {
+                        this.cachedResources[r] = { approxPerProducer: 0 };
+                    });
                 });
+                return;
             }
 
-            // Collect max production and approximate amount produced per kitten
-            for (var jobName in this.cachedJobs)
-            {
-                var job = this.cachedJobs[jobName];
+            // Pool all kittens in a job, and compute relevant data
+            jobList.forEach((j) => {
+                // Switch all kittens to this job
                 ajk.base.clearJobs();
-                if (!ajk.base.assignJobs(job.jobData, totalKittens))
-                {
-                    this.log.error('Failed to assign all kittens as ' + jobName + 's');
-                    continue;
-                }
+                ajk.base.assignJobs(this.cachedJobs[j].jobData, totalKittens);
                 ajk.base.updateVillageResourceProduction();
-                job.produces.forEach((r) => {
-                    this.cachedResources[r].maxProduction = ajk.base.getAccurateResPerTick(r);
 
-                    var delta = this.cachedResources[r].maxProduction - this.cachedResources[r].nullProduction;
-                    var perProducer = delta / totalKittens;
-                    this.cachedResources[r].approxPerProducer = perProducer;
+                // Collection production stats for this job
+                this.cachedJobs[j].produces.forEach((r) => {
+                    ajk.util.ensureKey(this.cachedResources, r, {}).estimatedProduction = ajk.base.getAccurateResPerTick(r);
                 });
-            }
+
+                // Collect null production stats for other jobs
+                jobList.forEach((k) => {
+                    if (k == j) { return; }
+                    if (this.cachedJobs[k].nullProductionComputed) { return; }
+                    this.cachedJobs[k].produces.forEach((r) => {
+                        ajk.util.ensureKey(this.cachedResources, r, {}).nullProduction = ajk.base.getAccurateResPerTick(r);
+                    });
+                    this.cachedJobs[k].nullProductionComputed = true;
+                });
+            });
+
+            // Compute perProducer contribution from the previous data
+            jobList.forEach((j) => {
+                this.cachedJobs[j].produces.forEach((r) => {
+                    this.cachedResources[r].approxPerProducer = (this.cachedResources[r].estimatedProduction - this.cachedResources[r].nullProduction) / totalKittens;
+                });
+            });
 
             // Remove all workers
             ajk.base.clearJobs();
@@ -154,7 +172,8 @@ ajk.jobs = {
             timer.interval('Normalize Production Vectors');
 
             // (2) Determine fixed / floating numbers
-            var utilDenom = jobPriorityOrder.reduce((a, j) => {
+            var floatingJobs = jobPriorityOrder.filter(j => j != 'farmer'); // We don't need floating farmers
+            var utilDenom = floatingJobs.reduce((a, j) => {
                 return a + this.cachedJobs[j].produces.reduce((b, r) => { return b + (utilization[r] || 0); }, 0);
             }, 0);
             var floaters    = Math.floor(totalKittens * ajk.config.kittenFloaterRatio);
@@ -178,10 +197,9 @@ ajk.jobs = {
             timer.interval('Assign Fixed Roles');
 
             // (4) Apply floating positions based on utilization
-            var floatingJobs = jobPriorityOrder.filter(j => j != 'farmer'); // We don't need floating farmers
             if (floaters > 0)
             {
-                jobPriorityOrder.forEach((jobName) => {
+                floatingJobs.forEach((jobName) => {
                     var jobUtilization = this.cachedJobs[jobName].produces.reduce((a, r) => { return a + (utilization[r] || 0); }, 0);
                     var workers = Math.min(totalKittens, Math.ceil(floaters * jobUtilization / utilDenom));
                     this.log.debug('Assigning ' + workers + ' kittens to be floating ' + jobName + 's');
@@ -229,10 +247,7 @@ ajk.jobs = {
             timer.interval('Assign Jobs');
 
             // Balance
-            if (ajk.base.censusAvailable())
-            {
-                ajk.base.optimizeJobs();
-            }
+            this.optimizeJobs();
             timer.end('Optimize Jobs');
         },
     },

@@ -442,6 +442,7 @@ ajk.core = {
                 ajk.base.hunt(numHunts);
             }
 
+            // TODO - First-time praise the sun
             var faith = this.cache.getResourceData('faith');
             if (faith.unlocked && faith.available == faith.max && !this.inDemand('faith'))
             {

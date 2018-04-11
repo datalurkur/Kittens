@@ -292,10 +292,17 @@ ajk.decisionTreeFactory = {
                         this.adjustedTime = 0;
                         this.log.trace('Resource is immediately available');
                     }
+                    else if (this.deficit > resourceData.max) // Check for capacity blockers
+                    {
+                        // We use the deficit rather than the full amount, in case resource storage decreased (or we performed a reset with chronospheres)
+                        this.log.trace('Capacity limited (max storage is ' + resourceData.max + ')');
+                        this.capacityBlockers.push([this.costData.resourceName, this.costData.price]);
+                        this.baseTime = Infinity;
+                        this.adjustedTime = Infinity;
+                    }
                     else
                     {
-                        var rData = cache.getResourceData(this.costData.resourceName);
-                        this.baseTime = this.deficit / rData.perTick;
+                        this.baseTime = this.deficit / resourceData.perTick;
                         if ((this.infiniteWaitTimes[this.costData.resourceName] || 0) > 0)
                         {
                             this.adjustedTime = Infinity;
@@ -391,8 +398,6 @@ ajk.decisionTreeFactory = {
                     this.log.trace('Updating resource node: ' + this.costData.resourceName);
                     this.log.indent();
 
-                    var rData = cache.getResourceData(this.costData.resourceName);
-
                     // Compute properties dependent on the parent node
                     if (this.parentOption == null)
                     {
@@ -407,13 +412,6 @@ ajk.decisionTreeFactory = {
                         this.consumption       = this.parentOption.consumption;
                         this.infiniteWaitTimes = this.parentOption.infiniteWaitTimes;
                         this.finiteWaitTimes   = this.parentOption.finiteWaitTimes;
-                    }
-
-                    // Check for capacity blockers
-                    if (this.costData.price > rData.max)
-                    {
-                        this.log.trace('Capacity limited (max storage is ' + rData.max + ')');
-                        this.capacityBlockers.push([this.costData.resourceName, this.costData.price]);
                     }
 
                     // Accumulate resource consumption
