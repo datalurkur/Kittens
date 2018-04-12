@@ -99,7 +99,7 @@ ajk.costDataFactory = {
                     [],
                     [['alicorns', 25]],
                     1,
-                    ajk.base.religionTab.sacrificeAlicornBtn
+                    ajk.base.religionTab.sacrificeAlicornsBtn
                 ));
             }
 
