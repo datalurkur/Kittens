@@ -1,0 +1,7 @@
+ajk.EffectsCache = class
+{
+    constructor()
+    {
+        
+    }
+};
