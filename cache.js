@@ -157,29 +157,6 @@ ajk.cache = {
             return false;
         },
 
-        getTradeAmountFor: function(race, saleData)
-        {
-            var season = ajk.base.getSeason();
-            var seasonModifier;
-                 if (season == 1) { seasonModifier = saleData.seasons.spring; }
-            else if (season == 2) { seasonModifier = saleData.seasons.summer; }
-            else if (season == 3) { seasonModifier = saleData.seasons.autumn; }
-            else                  { seasonModifier = saleData.seasons.winter; }
-
-            var amount = saleData.value * ajk.base.getTradeRatio();
-            var chance = saleData.chance;
-
-            if (race.name == 'zebras' && saleData.name == 'titanium')
-            {
-                // Special rules for this
-                var numShips = ajk.base.getResource('ship').value;
-                amount = (0.03 * numShips) + 1.5;
-                chance = ((0.35 * numShips) + 15) / 100;
-            }
-
-            return amount * (chance / 100) * seasonModifier;
-        },
-
         // Null means do nothing
         // Empty array means no costs - race discovery is ready
         // Populated array means there are blockers
