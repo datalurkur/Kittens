@@ -3,7 +3,6 @@
 var ajk = {
     base:
     {
-        simulate:    false,
         previousTab: null,
 
         // Data Accessors
@@ -96,12 +95,10 @@ var ajk = {
         // Various job hacks
         clearJobs: function()
         {
-            if (this.simulate) { return; }
             gamePage.village.clearJobs(true);
         },
         assignJobs: function(job, number)
         {
-            if (this.simulate) { return true; }
             if (number + job.value > gamePage.village.getJobLimit(job.name)) { return false; }
             var numAssigned = 0;
             var allKittens = gamePage.village.sim.kittens;
@@ -119,7 +116,6 @@ var ajk = {
         },
         removeJobs: function(job, number)
         {
-            if (this.simulate) { return true; }
             var numRemoved = 0;
             var allKittens = gamePage.village.sim.kittens;
             for (var i = 0; i < allKittens.length; ++i)
@@ -136,12 +132,10 @@ var ajk = {
         },
         updateVillageResourceProduction: function()
         {
-            if (this.simulate) { return; }
             gamePage.village.updateResourceProduction();
         },
         makeLeader: function(kitten)
         {
-            if (this.simulate) { return; }
             // Copied from the kittens code to avoid doing a tab switch
             if (gamePage.village.leader)
             {
@@ -152,12 +146,10 @@ var ajk = {
         },
         optimizeJobs: function()
         {
-            if (this.simulate) { return; }
             gamePage.village.optimizeJobs();
         },
         hunt: function(hunts)
         {
-            if (this.simulate) { return; }
             if (ajk.config.useAccurateHunting)
             {
                 return this.huntHack(hunts);
@@ -196,22 +188,18 @@ var ajk = {
         },
         praise: function()
         {
-            if (this.simulate) { return; }
             gamePage.religion.praise();
         },
         craft: function(resName, amount)
         {
-            if (this.simulate) { return true; }
             return gamePage.workshop.craft(resName, amount);
         },
         craftAll: function(resName)
         {
-            if (this.simulate) { return; }
             gamePage.workshop.craftAll(resName);
         },
         trade: function(race, amount)
         {
-            if (this.simulate) { return {}; }
             if (ajk.config.useAccurateTrading)
             {
                 return this.tradeHack(race, amount);
@@ -258,7 +246,6 @@ var ajk = {
         },
         purchaseItem: function(item)
         {
-            if (this.simulate) { return true; }
             var success = false;
             item.controller.buyItem(item.model, {}, function(result) {
                 success |= result;

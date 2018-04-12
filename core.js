@@ -580,15 +580,6 @@ ajk.core = {
         },
     },
 
-    simulateTick: function(forceRecompute)
-    {
-        this.internal.log.info('Simulating tick');
-        var pSimulate = ajk.base.simulate;
-        ajk.base.simulate = true;
-        this.internal.tick(forceRecompute);
-        ajk.base.simulate = pSimulate;
-    },
-
     shouldTick: function(doTick)
     {
         if (this.internal.tickThread != null)

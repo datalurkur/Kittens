@@ -100,8 +100,6 @@ ajk.backup = {
             return;
         }
 
-        if (ajk.simulate) { return; }
-
         this.log.info('Bailing early for testing reasons');
 
         gamePage.saveExport();

@@ -445,13 +445,6 @@ ajk.ui = {
         $('.inlineAccordion').click(function() { ajk.ui.togglePanel(this); });
 
         // Connect controls to callbacks and set initial values
-        $('#simulateTickButton').click(function() { ajk.core.simulateTick(true); });
-        $('#simulateTockButton').click(function() { ajk.core.simulateTick(false); });
-
-        var simToggle = $('#simulateToggle');
-        simToggle.click(function() { ajk.base.simulating = this.checked; });
-        simToggle.attr('checked', ajk.base.simulating);
-
         var tickToggle = $('#tickToggle');
         tickToggle.click(function() { ajk.core.shouldTick(this.checked); });
         tickToggle.attr('checked', ajk.config.ticking);
@@ -508,7 +501,6 @@ ajk.ui = {
             this.buildGraphs();
             timerData.interval('Build Graphs');
         }
-        $('#simulateToggle').attr('checked', ajk.base.simulating);
         $('#tickToggle').attr('checked', ajk.config.ticking);
         $('#logLevelSelect').attr('value', ajk.log.internal.logLevel);
         $('#detailSuccessToggle').attr('checked', ajk.config.detailedLogsOnSuccess);

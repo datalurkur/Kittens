@@ -216,10 +216,9 @@ ajk.cache = {
             }
             else if (race.name == 'spiders')
             {
-                var shipDeficit = 100 - ajk.base.getResource('ship').value;
-                if (shipDeficit > 0)
+                if (ajk.base.getResource('ship').value < 100)
                 {
-                    return ['accumulate', ['ship', shipDeficit]];
+                    return ['accumulate', ['ship', 100]];
                 }
                 else if (ajk.base.getResource('science').maxValue < 125000)
                 {
@@ -473,9 +472,19 @@ ajk.cache = {
         return this.internal.craftCache.costToCrafts[resourceName][craftName];
     },
 
+    getCraftCosts: function(craftName)
+    {
+        return this.internal.craftCache.craftData[craftname].costs;
+    },
+
     isCraftUnlocked: function(craftName)
     {
         return this.internal.craftCache.craftData[craftName].unlocked;
+    },
+
+    isCraftable: function(resourceName)
+    {
+        return this.internal.craftCache.craftData.hasOwnProperty(resourceName) && this.internal.craftCache.craftData[resourceName].unlocked;
     },
 
     getExplorationData: function()
