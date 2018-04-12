@@ -327,7 +327,7 @@ ajk.decisionTreeFactory = {
                         this.adjustedTime = 0;
                         this.log.trace('Resource is immediately available');
                     }
-                    else if (this.deficit > resourceData.max) // Check for capacity blockers
+                    else if (this.costData.price > resourceData.max) // Check for capacity blockers
                     {
                         // We use the deficit rather than the full amount, in case resource storage decreased (or we performed a reset with chronospheres)
                         this.log.trace('Capacity limited (max storage is ' + resourceData.max + ')');
