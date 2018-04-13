@@ -1,0 +1,15 @@
+- add job assignment
+
+Default Weight Bonuses:
+
+(1) Pre-Filters:
+
+(2) Pre-Adjustments:
+- tab discovery
+- storage
+- discourage expensive trading / reward trading bonuses
+(stretch)
+- production
+
+(5) Post-Adjustments:
+- top priority support

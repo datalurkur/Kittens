@@ -2,18 +2,17 @@
 
 const scripts = [
     {name: 'base.js', external: false, asModule: false},
-    {name: 'backup.js', external: false, asModule: false},
     {name: 'cache.js', external: false, asModule: false},
-    {name: 'costData.js', external: false, asModule: false},
-    {name: 'jobs.js', external: false, asModule: false},
-    {name: 'analysis.js', external: false, asModule: false},
+    {name: 'util.js', external: false, asModule: false},
+    {name: 'target.js', external: false, asModule: false},
+    {name: 'operation.js', external: false, asModule: false},
+    {name: 'resource.js', external: false, asModule: false},
+    {name: 'workshop.js', external: false, asModule: false},
+    {name: 'buildings.js', external: false, asModule: false},
+    {name: 'advancement.js', external: false, asModule: false},
+    {name: 'decision.js', external: false, asModule: false},
     {name: 'core.js', external: false, asModule: false},
     {name: "https://d3js.org/d3.v3.min.js", external: true, asModule: false},
-    {name: 'statistics.js', external: false, asModule: false},
-    {name: 'graph.js', external: false, asModule: false},
-    {name: 'ui.js', external: false, asModule: false},
-    {name: 'easteregg.js', external: false, asModule: false},
-    {name: 'start.js', external: false, asModule: false},
 ];
 
 const loadScript = function(index)
@@ -64,6 +63,7 @@ const handleDocumentLoaded = function()
     var head = document.head || document.getElementsByTagName('head')[0];
 
     // Inject stylesheet
+    /*
     var link = document.createElement('link')
     link.rel  = 'stylesheet';
     link.type = 'text/css';
@@ -74,6 +74,7 @@ const handleDocumentLoaded = function()
     // Inject left column controls
     injectHtml('sidebar.html', 'leftColumn');
     injectHtml('backupWidget.html', 'leftColumn');
+    */
 
     // Inject scripts
     loadScript(0);

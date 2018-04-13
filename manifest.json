@@ -12,22 +12,16 @@
     "browser_action": {},
     "web_accessible_resources": [
         "base.js",
-        "log.js",
-        "backup.js",
-        "timer.js",
         "cache.js",
-        "costData.js",
-        "jobs.js",
-        "analysis.js",
-        "statistics.js",
-        "graph.js",
-        "ui.js",
-        "core.js",
-        "easteregg.js",
-        "start.js",
-        "style.css",
-        "sidebar.html",
-        "backupWidget.html"
+        "util.js",
+        "target.js",
+        "operation.js",
+        "resource.js",
+        "workshop.js",
+        "buildings.js",
+        "advancement.js",
+        "decision.js",
+        "core.js"
     ],
     "background": {
         "scripts": ["background.js"]
