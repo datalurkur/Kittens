@@ -67,8 +67,8 @@ ajk.statistics = {
         recomputeYDomainForSet: function(valueSet)
         {
             valueSet.yDomain = [
-                ajk.util.arrayMin(valueSet.values),
-                ajk.util.arrayMax(valueSet.values)
+                ajk.util.arrayMin(valueSet.values.map(v => v[1])),
+                ajk.util.arrayMax(valueSet.values.map(v => v[1]))
             ];
         },
 

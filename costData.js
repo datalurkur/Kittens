@@ -79,7 +79,7 @@ ajk.costDataFactory = {
             if (resource == 'tears')
             {
                 var btn = ajk.base.religionTab().sacrificeBtn;
-                if (btn.model.visible)
+                if (btn != null && btn.model.visible)
                 {
                     this.log.detail('Adding sacrifice option for tears');
                     data.options.push(this.buildOptionCostData(
@@ -96,7 +96,7 @@ ajk.costDataFactory = {
             else if (resource == 'timeCrystal')
             {
                 var btn = ajk.base.religionTab().sacrificeAlicornsBtn;
-                if (btn.model.visible)
+                if (btn != null && btn.model.visible)
                 {
                     this.log.detail('Adding sacrifice option for time crystals');
                     data.options.push(this.buildOptionCostData(
@@ -110,6 +110,40 @@ ajk.costDataFactory = {
                     ));
                 }
             }
+            else if (resource == 'sorrow')
+            {
+                var btn = ajk.base.religionTab().refineBtn;
+                if (btn != null && btn.model.visible)
+                {
+                    data.options.push(this.buildOptionCostData(
+                        'tears',
+                        cache,
+                        'refine',
+                        [],
+                        [['tears', 10000]],
+                        1,
+                        btn
+                    ));
+                }
+            }
+            /*
+            else if (resource == 'relic')
+            {
+                var btn = ajk.base.religionTab().refineTCBtn;
+                if (btn != null && btn.model.visible)
+                {
+                    data.options.push(this.buildOptionCostData(
+                        'timeCrystal',
+                        cache,
+                        'refine',
+                        []
+                        [['timeCrystal', 10000]],
+                        1,
+                        btn
+                    ));
+                }
+            }
+            */
 
             this.log.unindent();
             return data;
@@ -338,6 +372,8 @@ ajk.decisionTreeFactory = {
                     else
                     {
                         this.baseTime = this.deficit / resourceData.perTick;
+                        if (this.baseTime < 0) { this.baseTime = Infinity; }
+
                         if ((this.infiniteWaitTimes[this.costData.resourceName] || 0) > 0)
                         {
                             this.adjustedTime = Infinity;
@@ -348,7 +384,6 @@ ajk.decisionTreeFactory = {
                             this.adjustedTime = this.baseTime + existingWait;
                         }
 
-                        if (this.baseTime < 0) { this.baseTime = Infinity; }
                         this.log.trace('It will be ' + this.baseTime + ' base ticks until quantity ' + this.deficit + ' is produced');
                         this.log.trace('Adjusted wait time is ' + this.adjustedTime);
                     }
@@ -424,8 +459,8 @@ ajk.decisionTreeFactory = {
 
                 traverse: function(opCallback, resCallback, leavesFirst)
                 {
-                    if (this.decision == null && resCallback != null) { resCallback(this); }
-                    else if (this.decision != null) { this.decision.traverse(opCallback, resCallback, leavesFirst); }
+                    if (resCallback != null) { resCallback(this); }
+                    if (this.decision != null) { this.decision.traverse(opCallback, resCallback, leavesFirst); }
                 },
 
                 update: function()

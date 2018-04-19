@@ -25,6 +25,8 @@ ajk.core = {
         // Operating variables
         tickThread:   null,
 
+        resetPending: false,
+
         year:        -1,
         season:      -1,
         successes:    0,
@@ -315,6 +317,24 @@ ajk.core = {
             }
         },
 
+        sacrificeUpTo: function(button, target, identifier)
+        {
+            var availableActions = button.model.prices.reduce((allowed, price) => {
+                var available = Math.floor(this.cache.getResourceData(price.name).available / price.val);
+                return Math.min(allowed, available);
+            }, Infinity);
+            var actualCount = Math.min(target, availableActions);
+            if (actualCount == 0) { return; }
+            if (!button.controller.sacrifice(button.model, actualCount))
+            {
+                this.log.error('Failed to sacrifice ' + identifier + ' ' + actualCount + ' times');
+            }
+            else
+            {
+                this.log.debug('Sacrificed ' + identifier + ' ' + actualCount + ' times');
+            }
+        },
+
         applyAmbientProductionConsumption: function()
         {
             this.cache.getAllResources().forEach((r) => {
@@ -380,25 +400,14 @@ ajk.core = {
                     }
                     else if (method == 'sacrifice')
                     {
-                        if (opDecision.maxTime == 0)
-                        {
-                            var sacItem = opDecision.optionData.extraData;
-                            if (!sacItem.controller.sacrifice(sacItem.model, opDecision.actionCount))
-                            {
-                                this.log.error('Failed to ' + opDecision.identifier() + ' ' + opDecision.actionCount + ' times');
-                            }
-                            else
-                            {
-                                this.log.info(method + 'd ' + opDecision.actionCount + ' ' + opDecision.optionData.identifier);
-                            }
-                        }
+                        this.sacrificeUpTo(opDecision.optionData.extraData, opDecision.actionCount, opDecision.optionData.identifier);
                     }
                     else if (method == 'purchase' || method == 'explore')
                     {
                         var item = opDecision.optionData.extraData;
                         var zeroTime = opDecision.maxTime == 0;
                         var purchaseReady = ajk.base.readyForPurchase(item);
-                        if (zeroTime && purchaseReady)
+                        if (purchaseReady && (zeroTime || method != 'explore'))
                         {
                             if (!ajk.base.purchaseItem(item))
                             {
@@ -410,10 +419,6 @@ ajk.core = {
                                 this.addEvent(item, opDecision.optionData.identifier, iData.type, iData.significance);
                                 this.successes += 1;
                             }
-                        }
-                        else if (!zeroTime && purchaseReady && method != 'explore')
-                        {
-                            this.log.warn('Item is ready for purchase, but has nonzero time, investigate');
                         }
                         else
                         {
@@ -434,6 +439,15 @@ ajk.core = {
             });
         },
 
+        shouldConvert: function(rData)
+        {
+            // TODO - Figure out mechanism for reset preservation
+            // Kinda hacky check to see if we just reset with chronospheres and have a huge surplus of something
+            if (rData.available > (rData.max * 2)) { return false; }
+            if (rData.unlocked && rData.available / rData.max >= ajk.config.conversionMaxRatio) { return true; }
+            return false;
+        },
+
         convertResources: function()
         {
             this.log.debug('Converting resources');
@@ -445,7 +459,16 @@ ajk.core = {
                 var craftName = this.resourceConversions[rName];
                 if (!rData.unlocked || !this.cache.isCraftUnlocked(craftName)) { continue; }
 
-                if (rData.available / rData.max >= ajk.config.conversionMaxRatio)
+                var consumesDemandedResource = false;
+                ajk.base.getCraft(craftName).prices.forEach((price) => {
+                    if (this.inDemand(price.name) && price.name != rName)
+                    {
+                        consumesDemandedResource = true;
+                    }
+                });
+                if (consumesDemandedResource) { continue; }
+
+                if (this.shouldConvert(rData))
                 {
                     var amountToConvert =  rData.max * ajk.config.conversionRatio;
                     var craftPrice = this.cache.getResourceCostForCraft(rName, craftName);
@@ -456,16 +479,22 @@ ajk.core = {
             }
 
             var catPower = this.cache.getResourceData('manpower');
-            if (catPower.unlocked && catPower.available / catPower.max >= ajk.config.conversionMaxRatio)
+            if (this.shouldConvert(catPower))
             {
                 var numHunts = Math.ceil(catPower.max * ajk.config.catpowerConversionRatio / 100);
                 this.log.debug('Sending hunters ' + numHunts + ' times');
                 ajk.base.hunt(numHunts);
             }
 
-            // TODO - First-time praise the sun
+            var gold = this.cache.getResourceData('gold');
+            if (this.shouldConvert(gold) && !this.inDemand('gold'))
+            {
+                this.log.debug('Promoting kittens');
+                ajk.base.promote();
+            }
+
             var faith = this.cache.getResourceData('faith');
-            if (faith.unlocked && faith.available == faith.max && !this.inDemand('faith'))
+            if (this.shouldConvert(faith) && !this.inDemand('faith'))
             {
                 this.log.debug('Praising the sun');
                 ajk.base.praise();
@@ -483,6 +512,40 @@ ajk.core = {
             {
                 this.log.debug('Crafting all compendiums');
                 this.craftUpTo('compedium', Infinity, false);
+            }
+        },
+
+        balanceStructures: function()
+        {
+            var smelters = ajk.base.getBuilding('smelter');
+            if (smelters.val == 0) { return; }
+            var cons = this.cache.getResourceConsumptionForItem('smelter');
+            var prod = this.cache.getResourceProductionForItem('smelter');
+            var consImpact = Object.keys(cons).reduce((a, r) => {
+                return a + ((this.utilization[r] || 0) * cons[r]);
+            }, 0);
+            var prodImpact = Object.keys(prod).reduce((a, r) => {
+                return a + ((this.utilization[r] || 0) * prod[r]);
+            }, 0);
+            var ratio = prodImpact / (prodImpact - consImpact);
+            var active = Math.ceil(ratio * smelters.val);
+            if (active > smelters.val) { active = smelters.val; }
+            this.log.debug('Turning on ' + active + ' smelters');
+            smelters.on = active;
+        },
+
+        miscHacks: function()
+        {
+            if (ajk.base.getScience('theology').researched && !ajk.base.getJob('priest').unlocked)
+            {
+                this.log.info('Praising the sun for the first time');
+                ajk.base.praise();
+            }
+
+            if (ajk.base.getCraft('megalith').unlocked && ajk.base.getBuilding('ziggurat').val == 0)
+            {
+                this.log.debug('Attempting to craft first megalith');
+                this.craftUpTo('megalith', 1, false);
             }
         },
 
@@ -539,14 +602,27 @@ ajk.core = {
             this.applyAmbientProductionConsumption();
             timerData.interval('Collect Ambient Resource Production');
 
-            this.pursuePriority();
-            timerData.interval('Pursue Priority');
+            if (this.resetPending)
+            {
+                this.consumption['faith'] = Infinity;
+            }
+            else
+            {
+                this.pursuePriority();
+                timerData.interval('Pursue Priority');
+            }
+
+            this.miscHacks();
+            timerData.interval('Miscellaneous Hacks');
 
             this.convertResources();
             timerData.interval('Resource Conversion');
 
             this.computeResourceUtilization();
             timerData.interval('Compute Utilization');
+
+            this.balanceStructures();
+            timerData.interval('Structure Management');
 
             ajk.jobs.update(doRebuild, this.utilization);
             timerData.interval('Kitten Management');

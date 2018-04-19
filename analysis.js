@@ -49,6 +49,32 @@ ajk.analysisModule = {
 
 ajk.processors = { config: {} };
 
+// Infinite time filtering
+ajk.analysisModule.addPreprocessor(function(data, cache, itemMap, log) {
+    var meetsCriteria = [];
+    data.eligible.forEach((itemName) => {
+        if (itemMap[itemName].decisionTree.maxTime != Infinity)
+        {
+            meetsCriteria.push(itemName);
+        }
+    });
+    data.eligible = meetsCriteria;
+});
+
+// Iron will mode
+ajk.analysisModule.addPreprocessor(function(data, cache, itemMap, log) {
+    if (!ajk.config.ironWillMode) { return; }
+    log.debug('Filtering by iron will limitations');
+    log.indent();
+    var meetsCriteria = [];
+    data.eligible.forEach((itemName) => {
+        if (Object.keys(itemMap[itemName].item.model.metadata.effects || {}).indexOf('maxKittens') == -1) { meetsCriteria.push(itemName); }
+    });
+    log.debug('Filtered out ' + (data.eligible.length - meetsCriteria.length) + ' items');
+    log.unindent();
+    data.eligible = meetsCriteria;
+});
+
 // Unmet max capacity filtering
 ajk.analysisModule.addPreprocessor(function(data, cache, itemMap, log) {
     log.debug('Filtering by resource capacity needs');
@@ -73,7 +99,7 @@ ajk.analysisModule.addPreprocessor(function(data, cache, itemMap, log) {
     data.eligible = meetsCriteria;
 });
 
-// Unmet max capacity filtering
+// Unmet production filtering
 ajk.analysisModule.addPreprocessor(function(data, cache, itemMap, log) {
     log.debug('Filtering by resource production needs');
     log.indent();
@@ -83,7 +109,7 @@ ajk.analysisModule.addPreprocessor(function(data, cache, itemMap, log) {
         var exclude = false;
         for (var resourceName in consumption)
         {
-            if (cache.getResourceData(resourceName).perTick + consumption[resourceName] <= 0)
+            if (cache.getResourceData(resourceName).perTick - consumption[resourceName] <= 0)
             {
                 exclude = true;
                 ajk.util.ensureKey(data.resourceProductionLimitations, resourceName, []).push(consumption[resourceName]);
@@ -101,7 +127,25 @@ ajk.analysisModule.addPreprocessor(function(data, cache, itemMap, log) {
 
 // Default weights
 ajk.processors.config.defaultWeights = {
-    // TODO
+    // Housing
+    'hut': 1,
+    'logHouse': 1,
+    'mansion': 1,
+    'spaceStation': 1,
+
+    // Important sciences
+    'theology': 2,
+
+    // Important workshop upgrades
+    'coalFurnace': 2,
+    'deepMining': 2,
+    'oxidation': 2,
+
+    'ironwood': 3,
+    'concreteHuts': 3,
+    'unobtainiumHuts': 3,
+
+    'fluxCondensator': 4
 };
 ajk.analysisModule.addPreprocessor(function(data, cache, itemMap, log) {
     log.debug('Applying default weights');
@@ -113,11 +157,27 @@ ajk.analysisModule.addPreprocessor(function(data, cache, itemMap, log) {
     });
 });
 
-// One-shots
-ajk.processors.config.oneShotWeightBonus = 5;
+// Type emphasis
+ajk.processors.config.scienceWeightBonus = 6;
+ajk.processors.config.religionWeightBonus = 4;
+ajk.processors.config.workshopWeightBonus = 3;
 ajk.analysisModule.addPreprocessor(function(data, cache, itemMap, log) {
     log.debug('Applying one-shot bonuses');
-    data.eligible.forEach((itemName) => { data.addModifier(itemName, ajk.processors.config.oneShotWeightBonus, 'one-shot'); });
+    data.eligible.forEach((itemName) =>
+    {
+        switch (itemMap[itemName].type)
+        {
+            case 'science':
+                data.addModifier(itemName, ajk.processors.config.scienceWeightBonus, 'science');
+                break;
+            case 'religion':
+                data.addModifier(itemName, ajk.processors.config.religionWeightBonus, 'religion');
+                break;
+            case 'workshop':
+                data.addModifier(itemName, ajk.processors.config.workshopWeightBonus, 'workshop');
+                break;
+        }
+    });
 });
 
 // Time cost
@@ -215,4 +275,26 @@ ajk.analysisModule.addPostprocessor(function(data, cache, itemMap, log) {
     log.debug('Filtered out ' + (data.eligible.length - meetsCriteria.length) + ' items');
     log.unindent();
     data.eligible = meetsCriteria;
+});
+
+// Containment Chamber Throttling
+ajk.analysisModule.addPostprocessor(function(data, cache, itemMap, log) {
+    log.debug('Throttling containment chamber purchasing');
+    log.indent();
+    var needsAntimatterStorage = false;
+    data.eligible.forEach((itemName) => {
+        if (itemMap[itemName].decisionTree.capacityBlockers.hasOwnProperty('antimatter'))
+        {
+            needsAntimatterStorage = true;
+        }
+    });
+    if (!needsAntimatterStorage)
+    {
+        var index = data.eligible.indexOf('containmentChamber');
+        if (index != -1)
+        {
+            data.eligible.splice(index, 1);
+        }
+    }
+    log.unindent();
 });

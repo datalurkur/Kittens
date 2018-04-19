@@ -155,6 +155,11 @@ var ajk = {
             if (this.simulate) { return; }
             gamePage.village.optimizeJobs();
         },
+        promote: function()
+        {
+            if (this.simulate) { return; }
+            gamePage.village.promoteKittens();
+        },
         hunt: function(hunts)
         {
             if (this.simulate) { return; }
@@ -270,6 +275,8 @@ var ajk = {
 
 ajk.config = {
     tickOnLoad:              true,
+
+    ironWillMode:            false,
 
     // Util config and flags
     performBackup:           false,
