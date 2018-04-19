@@ -1,51 +1,61 @@
-<button class="accordion">Script Control</button>
-<div class="accordionPanel">
-    <input type="button" id="simulateTickButton" value="Simulate Tick" style="width: 100px;" />
-    <input type="button" id="simulateTockButton" value="Simulate Tock" style="width: 100px;" />
-    <br/>
-    <input id="simulateToggle" type="checkbox" />
-    <label for="simulateToggle">Simulating</label>
-    <br/>
-    <input id="tickToggle" type="checkbox" />
-    <label for="tickToggle">Ticking</label>
-    <br/>
-    <label for="logLevelSelect">Log Level</label>
-    <br/>
-    <select id="logLevelSelect" style="width: 200px">
-        <option value="0">Errors Only</option>
-        <option value="1">Errors and Warnings</option>
-        <option value="2">Info</option>
-        <option value="3">Debug</option>
-        <option value="4">Detail</option>
-        <option value="5">Trace</option>
-    </select>
-    <br/>
-    <button class="inlineAccordion">Log Channels</button>
-    <div class="accordionPanel" style="display: none;">
-        <input type="button" id="enableAllChannelsButton"  value="Enable" style="width: 100px;" />
-        <input type="button" id="disableAllChannelsButton" value="Disable" style="width: 100px;" />
-        <div id="logChannelContainer"></div>
+<div>
+    <button class="accordion">Script Control</button>
+    <div class="accordionPanel" style="display:none;">
+        <div class="debugControls">
+            <input type="button" id="simulateTickButton" value="Simulate Tick" style="width:100px;" />
+            <input type="button" id="simulateTockButton" value="Simulate Tock" style="width:100px;" />
+            <br/>
+            <input id="simulateToggle" type="checkbox" />
+            <label for="simulateToggle">Simulating</label>
+            <br/>
+            <input id="detailSuccessToggle" type="checkbox" />
+            <label for="detailSuccessToggle">Detailed Output On Success</label>
+            <br/>
+            <input id="detailErrorToggle" type="checkbox" />
+            <label for="detailErrorToggle">Detailed Output On Errors</label>
+            <br/>
+        </div>
+        <input id="tickToggle" type="checkbox" />
+        <label for="tickToggle">Ticking</label>
+        <br/>
+        <label for="logLevelSelect">Log Level</label>
+        <br/>
+        <select id="logLevelSelect" style="width:100%">
+            <option value="0">Errors Only</option>
+            <option value="1">Errors and Warnings</option>
+            <option value="2">Info</option>
+            <option value="3">Debug</option>
+            <option value="4">Detail</option>
+            <option value="5">Trace</option>
+        </select>
+        <div>
+            <button class="inlineAccordion">Log Channels</button>
+            <div class="accordionPanel" style="display: none;">
+                <input type="button" id="enableAllChannelsButton"  value="Enable" style="width:100px;" />
+                <input type="button" id="disableAllChannelsButton" value="Disable" style="width:100px;" />
+                <div id="logChannelContainer"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div>
+    <button class="accordion">Current Priorities</button>
+    <div class="accordionPanel">
+        <table class="ajkTable">
+            <tbody id="priorityTable"></tbody>
+        </table>
     </div>
     <br/>
-    <input id="detailSuccessToggle" type="checkbox" />
-    <label for="detailSuccessToggle">Detailed Output On Success</label>
-    <br/>
-    <input id="detailErrorToggle" type="checkbox" />
-    <label for="detailErrorToggle">Detailed Output On Errors</label>
-    <br/>
 </div>
-<br/>
-<button class="accordion">Current Priorities</button>
-<div class="accordionPanel">
-    <table class="ajkTable">
-        <tbody id="priorityTable"></tbody>
-    </table>
+
+<div>
+    <input type="button" id="ajkModalWindowOpenButton" value="Details" style="width:100%" />
 </div>
-<br/>
-<input type="button" id="ajkModalWindowOpenButton" value="Details" style="width: 200px" />
+
 <div id="ajkModalWindow" class="modal">
   <div class="modalContent">
-    <input type="button" id="clearStatisticsButton" value="Clear Statistics" style="width: 200px" />
+    <input type="button" id="clearStatisticsButton" value="Clear Statistics" style="width:200px" />
     <span class="modalCloseButton" id="ajkModalWindowCloseButton">&times;</span>
     <table class="boundedTable">
         <tbody>
@@ -59,9 +69,9 @@
                 </td>
                 <td>
                     <div class="graphContainer">
-                        <div id="utilizationGraph"></div>
                         <div id="purchasesGraph"></div>
                         <div id="perTickGraph"></div>
+                        <div id="utilizationGraph"></div>
                     </div>
                 </td>
             </tr>

@@ -168,7 +168,8 @@ ajk.graphFactory = {
         var tooltip = svg.select('g.tooltip');
 
         // Update event group properties
-        eventGroups.selectAll('circle.eventBubble').attr('class', (d) => {
+        eventGroups.select('circle.eventBubble')
+            .attr('class', (d) => {
                      if (d.significance < 3) { return 'eventBubble minor'; }
                 else if (d.significance > 4) { return 'eventBubble major'; }
                 else                         { return 'eventBubble';       }
@@ -210,7 +211,7 @@ ajk.graphFactory = {
                 tooltip.style('opacity', 0);
             });
 
-        eventGroups.selectAll('text.eventLabel').text(d => d.label)
+        eventGroups.select('text.eventLabel').text(d => d.label)
             .attr('transform', d => 'translate(' + (xScale(d.time) - 3) + ', ' + (graphData.padding[3] + 16) + ') rotate(90)');
     },
 }

@@ -283,6 +283,7 @@ ajk.config = {
     performBackup:           false,
     detailedLogsOnError:     false,
     detailedLogsOnSuccess:   false,
+    alertOnError:            true,
     ticking:                 false,
 
     // General script loop control
@@ -435,11 +436,12 @@ ajk.log = {
             error:  function(message)
             {
                 ajk.log.internal.logInternal(message, ajk.log.internal.errorLevel, this.channel);
-                if (ajk.config.detailedLogsOnError)
+                if (ajk.config.alertOnError)
                 {
-                    ajk.core.shouldTick(false);
-                    ajk.log.flush(true);
+                    alert('An error occured in the Kitten Savant plugin!\nContact the developer.\nDetails:\n' + message);
                 }
+                ajk.core.shouldTick(false);
+                ajk.log.flush(ajk.config.detailedLogsOnError);
             },
         };
     }

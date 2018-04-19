@@ -73,7 +73,9 @@ const handleDocumentLoaded = function()
     // Inject UI
     // Inject left column controls
     injectHtml('sidebar.html', 'leftColumn');
-    injectHtml('backupWidget.html', 'leftColumn');
+
+    // Leave out the backup widget until we figure out a better solution for API keys and such
+    //injectHtml('backupWidget.html', 'leftColumn');
 
     // Inject scripts
     loadScript(0);

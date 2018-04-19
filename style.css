@@ -44,6 +44,10 @@
     font-size: 14px;
 }
 
+div.debugControls {
+    display: none;
+}
+
 /* Table styles */
 .ajkTable {
     font-family: 'Times New Roman', Times, serif;

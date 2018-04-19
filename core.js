@@ -308,6 +308,8 @@ ajk.core = {
             var actualTradeCount = Math.min(tradeAllCount, trades);
             if (actualTradeCount == 0) { return; }
 
+            if (this.inDemand('gold')) { return; }
+
             var consumesDemandedResource = false;
             race.buys.forEach((price) => {
                 if (this.inDemand(price.name))
@@ -315,7 +317,7 @@ ajk.core = {
                     consumesDemandedResource = true;
                 }
             });
-            if (consumesDemandedResource) { return true; }
+            if (consumesDemandedResource) { return; }
 
             var result = ajk.base.trade(race, actualTradeCount);
             if (Object.keys(result).length > 0)

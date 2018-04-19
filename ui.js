@@ -160,7 +160,7 @@ ajk.ui = {
             on:           true,
         },
         {
-            name:         'major-3',
+            name:         'major-5',
             color:        'crimson',
             on:           true,
         },
