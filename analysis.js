@@ -157,6 +157,12 @@ ajk.analysisModule.addPreprocessor(function(data, cache, itemMap, log) {
     });
 });
 
+// Happiness
+ajk.analysisModule.addPreprocessor(function(data, cache, itemMap, log) {
+    var mod = (2 - ajk.base.getHappiness()) * 3;
+    data.addModifier('amphitheatre', mod, 'happiness');
+});
+
 // Type emphasis
 ajk.processors.config.scienceWeightBonus = 6;
 ajk.processors.config.religionWeightBonus = 4;

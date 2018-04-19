@@ -270,9 +270,21 @@ ajk.core = {
             var craftAllCount = ajk.base.getCraftAllAmount(craftName);
             var actualCraftCount = Math.min(craftAllCount, amount);
             if (actualCraftCount == 0) { return true; }
+
+            var cData = ajk.base.getCraft(craftName);
+
+            var consumesDemandedResource = false;
+            cData.prices.forEach((price) => {
+                if (this.inDemand(price.name))
+                {
+                    consumesDemandedResource = true;
+                }
+            });
+            if (consumesDemandedResource) { return true; }
+
             if (ajk.base.craft(craftName, actualCraftCount))
             {
-                var costAmount = ajk.base.getCraft(craftName).prices.map((k) => {
+                var costAmount = cData.prices.map((k) => {
                     return {
                         name: k.name,
                         val:  k.val * actualCraftCount
@@ -295,6 +307,16 @@ ajk.core = {
             var tradeAllCount = ajk.base.getTradeAllAmount(race.name);
             var actualTradeCount = Math.min(tradeAllCount, trades);
             if (actualTradeCount == 0) { return; }
+
+            var consumesDemandedResource = false;
+            race.buys.forEach((price) => {
+                if (this.inDemand(price.name))
+                {
+                    consumesDemandedResource = true;
+                }
+            });
+            if (consumesDemandedResource) { return true; }
+
             var result = ajk.base.trade(race, actualTradeCount);
             if (Object.keys(result).length > 0)
             {

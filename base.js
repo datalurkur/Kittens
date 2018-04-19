@@ -31,6 +31,7 @@ var ajk = {
         censusAvailable:    function()            { return gamePage.science.get('civil').researched;                       },
         getLeader:          function()            { return gamePage.village.leader;                                        },
         getKittenInfo:      function()            { return gamePage.village.sim.kittens;                                   },
+        getHappiness:       function()            { return gamePage.village.happiness;                                     },
 
         // Trade stuff
         getAllRaces:        function()            { return gamePage.diplomacy.races;                                       },

@@ -132,6 +132,40 @@ ajk.ui = {
         },
     },
 
+    eventChannels:
+    [
+        {
+            name:         'minor-0',
+            color:        'white',
+            on:           false,
+        },
+        {
+            name:         'minor-1',
+            color:        'white',
+            on:           false,
+        },
+        {
+            name:         'minor-2',
+            color:        'white',
+            on:           true,
+        },
+        {
+            name:         'standard-3',
+            color:        'steelblue',
+            on:           true,
+        },
+        {
+            name:         'standard-4',
+            color:        'steelblue',
+            on:           true,
+        },
+        {
+            name:         'major-3',
+            color:        'crimson',
+            on:           true,
+        },
+    ],
+
     graphOptions:
     {
         interpolation: 'step-after',
@@ -177,6 +211,13 @@ ajk.ui = {
     toggleGraphResource: function(resource)
     {
         this.resourceInfo[resource].on = !this.resourceInfo[resource].on;
+        this.updateGraphData();
+        this.buildGraphs();
+    },
+
+    toggleEventChannel: function(channelData)
+    {
+        channelData.on = !channelData.on;
         this.updateGraphData();
         this.buildGraphs();
     },
@@ -249,27 +290,39 @@ ajk.ui = {
     {
         var data = ajk.statistics.get();
 
-        // Resource toggles
-        var toggles = d3.select('.resourceToggleContainer').selectAll('div').data(data.allResources);
-        toggles.exit().remove();
-        var newToggles = toggles.enter().append('div');
+        // Event significance toggles
+        var eventToggles = d3.select('.toggleContainer #events').selectAll('div').data(this.eventChannels);
+        eventToggles.exit().remove();
+        var newEventToggles = eventToggles.enter().append('div');
 
-        newToggles.append('input')
+        newEventToggles.append('input')
+            .attr('type', 'checkbox')
+            .attr('id', d => d.name)
+            .on('click', d => this.toggleEventChannel(d));
+        newEventToggles.append('label')
+            .attr('for', d => d.name)
+            .style('color', d => d.color)
+            .text(d => d.name);
+
+        eventToggles.selectAll('div input')
+            .property('checked', d => d.on);
+
+        // Resource toggles
+        var resourceToggles = d3.select('.toggleContainer #resources').selectAll('div').data(data.allResources);
+        resourceToggles.exit().remove();
+        var newResourceToggles = resourceToggles.enter().append('div');
+
+        newResourceToggles.append('input')
             .attr('type', 'checkbox')
             .attr('id', d => d)
             .on('click', d => this.toggleGraphResource(d));
-        newToggles.append('label')
+        newResourceToggles.append('label')
             .attr('for', d => d)
-            .style('color', (d) => {
-                return this.resourceInfo[d].color;
-            })
+            .style('color', d => this.resourceInfo[d].color)
             .text(d => d);
 
-        toggles.selectAll('div input')
+        resourceToggles.selectAll('div input')
             .property('checked', d => this.resourceInfo[d].on);
-
-
-        var filteredResources = data.allResources.filter(r => this.resourceInfo[r].on);
 
         // Per tick graph
         var perTickData = {
@@ -291,6 +344,7 @@ ajk.ui = {
             labels:         [],
             timeDomain:     data.timeDomain,
         };
+        var filteredResources = data.allResources.filter(r => this.resourceInfo[r].on);
         filteredResources.forEach((r) => {
             // Update y domain
             perTickData.yDomain = [
@@ -320,60 +374,8 @@ ajk.ui = {
             });
         });
 
-        // Resource utilization graph
-        /*
-        // Not super interesting
-        var utilizationData = {
-            title:         'resources utilization',
-            padding:        [this.graphOptions.leftPadding, this.graphOptions.rightPadding, 32, 32],
-            baseTimeDomain: data.timeDomain,
-            xTicks:         7,
-            type:           'lineGraph',
-            parent:         'utilizationGraph',
-
-            // LineGraph Specific
-            yTicks:         5,
-            interpolation:  this.graphOptions.interpolation,
-            yTickFormat:    function(d) { return Math.ceil(d * 100) + '%'; },
-
-            // Computed
-            yDomain:        [0, 1],
-            lines:          [],
-            labels:         [],
-            timeDomain:     data.timeDomain,
-        };
-        for (var r in data.utilization)
-        {
-            // Update y domain
-            utilizationData.yDomain = [
-                Math.min(utilizationData.yDomain[0], data.utilization[r].yDomain[0]),
-                Math.max(utilizationData.yDomain[1], data.utilization[r].yDomain[1]),
-            ];
-
-            // Update lines
-            var color = this.resourceInfo[r].color;
-            var sets = data.utilization[r].sets;
-            sets.forEach((s) => {
-                utilizationData.lines.push({
-                    color:  color,
-                    values: s.values,
-                });
-            });
-
-            // Update labels
-            if (sets.length == 0) { return; }
-            var lastSet   = sets[sets.length - 1];
-            if (lastSet.values.length == 0) { return; }
-            var lastValue = lastSet.values[lastSet.values.length - 1];
-            utilizationData.labels.push({
-                label: r,
-                color: color,
-                y:     lastValue[1]
-            });
-        };
-        */
-
         // Event graph
+        var filteredPurchases = data.purchases.filter(p => this.eventChannels[p.significance].on);
         var eventData = {
             title:          'event log',
             padding:        [this.graphOptions.leftPadding, this.graphOptions.rightPadding, 128, 64],
@@ -383,7 +385,7 @@ ajk.ui = {
             parent:         'purchasesGraph',
 
             // EventGraph Specific
-            events:         data.purchases,
+            events:         filteredPurchases,
 
             // Computed
             timeDomain:     data.timeDomain,
