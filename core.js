@@ -559,7 +559,7 @@ ajk.core = {
             var prodImpact = Object.keys(prod).reduce((a, r) => {
                 return a + ((this.utilization[r] || 0) * prod[r]);
             }, 0);
-            var ratio = prodImpact / (prodImpact - consImpact);
+            var ratio = prodImpact / (prodImpact + consImpact);
             var active = Math.ceil(ratio * smelters.val);
             if (active > smelters.val) { active = smelters.val; }
             this.log.debug('Turning on ' + active + ' smelters');

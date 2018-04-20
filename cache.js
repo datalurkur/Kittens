@@ -14,6 +14,7 @@ ajk.cache = {
                 [
                     'PerTickAutoprod',
                     'PerTickBase',
+                    'PerTickSpace',
                     'PerTickProd',
                     'Production',
                     'DemandRatio',
@@ -149,7 +150,7 @@ ajk.cache = {
                     ajk.util.ensureKey(table.resourceToItems, resource, []).push(item);
 
                     // Item -> resource data (eg 'give me data on all the resources steamworks consumes via its effects')
-                    ajk.util.ensureKey(table.itemToResourceData, item, {})[resource] = effectQuantity;
+                    ajk.util.ensureKey(table.itemToResourceData, item, {})[resource] = Math.abs(effectQuantity);
 
                     return true;
                 }

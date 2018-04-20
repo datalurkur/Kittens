@@ -3,8 +3,8 @@
     border: none;
     outline: none;
 
-    color: white;
     background: none;
+    color: black;
 
     text-transform: capitalize;
     text-align: left;
@@ -14,12 +14,18 @@
 
     padding-top: 10px;
 }
+.scheme_dark .accordion {
+    color: white;
+}
+.scheme_sleek .accordion {
+    color: white;
+}
 
 .inlineAccordion {
     border: none;
     outline: none;
 
-    color: white;
+    color: black;
     background: none;
 
     text-align: left;
@@ -30,12 +36,30 @@
     margin: 0px;
     width: 100%;
 }
+.scheme_dark .inlineAccordion {
+    color: white;
+}
+.scheme_sleek .inlineAccordion {
+    color: white;
+}
 
 .accordion:hover {
+    color: gray;
+}
+.scheme_dark .accordion:hover {
+    color: red;
+}
+.scheme_sleek .accordion:hover {
     color: red;
 }
 
 .inlineAccordion:hover {
+    background-color: rgb(232, 232, 232);
+}
+.scheme_dark .inlineAccordion:hover {
+    background-color: rgb(64, 64, 64);
+}
+.scheme_sleek .inlineAccordion:hover {
     background-color: rgb(64, 64, 64);
 }
 
@@ -61,6 +85,12 @@ div.debugControls {
 }
 
 .ajkTable tbody tr:nth-child(odd) td {
+    background: rgb(232, 232, 232);
+}
+.scheme_dark .ajkTable tbody tr:nth-child(odd) td {
+    background: rgb(16, 16, 16);
+}
+.scheme_sleek .ajkTable tbody tr:nth-child(odd) td {
     background: rgb(16, 16, 16);
 }
 
@@ -184,9 +214,9 @@ text.tooltipText tspan.major {
 }
 
 svg .title {
-    fill: #fff;
     font-size: 18px;
     font-family: Arial;
+    fill: #fff;
 }
 
 path.line {
@@ -212,14 +242,14 @@ clipPath.clip rect {
 .axis path,
 .axis line {
     fill: none;
-    stroke: #fff;
     shape-rendering: crispEdges;
+    stroke: #fff;
 }
 
 .axis .tick {
-    fill: #fff;
     font-size: 12px;
     font-family: Arial;
+    fill: #fff;
 }
 
 circle.eventBubble {
