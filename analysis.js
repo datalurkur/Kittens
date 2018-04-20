@@ -159,29 +159,27 @@ ajk.analysisModule.addPreprocessor(function(data, cache, itemMap, log) {
 
 // Happiness
 ajk.analysisModule.addPreprocessor(function(data, cache, itemMap, log) {
-    var mod = (2 - ajk.base.getHappiness()) * 3;
-    data.addModifier('amphitheatre', mod, 'happiness');
+    if (data.eligible.indexOf('amphitheatre') != -1)
+    {
+        var mod = (2 - ajk.base.getHappiness()) * 3;
+        data.addModifier('amphitheatre', mod, 'happiness');
+    }
 });
 
 // Type emphasis
-ajk.processors.config.scienceWeightBonus = 6;
-ajk.processors.config.religionWeightBonus = 4;
-ajk.processors.config.workshopWeightBonus = 3;
+ajk.processors.config.typeBonuses = {
+    'science': 6,
+    'missions': 5,
+    'religion': 4,
+    'workshop': 3
+};
 ajk.analysisModule.addPreprocessor(function(data, cache, itemMap, log) {
     log.debug('Applying one-shot bonuses');
     data.eligible.forEach((itemName) =>
     {
-        switch (itemMap[itemName].type)
+        if (ajk.processors.config.typeBonuses.hasOwnProperty(itemMap[itemName].type))
         {
-            case 'science':
-                data.addModifier(itemName, ajk.processors.config.scienceWeightBonus, 'science');
-                break;
-            case 'religion':
-                data.addModifier(itemName, ajk.processors.config.religionWeightBonus, 'religion');
-                break;
-            case 'workshop':
-                data.addModifier(itemName, ajk.processors.config.workshopWeightBonus, 'workshop');
-                break;
+            data.addModifier(itemName, ajk.processors.config.typeBonuses[itemMap[itemName].type], 'type');
         }
     });
 });
