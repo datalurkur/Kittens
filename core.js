@@ -420,7 +420,15 @@ ajk.core = {
                     }
                     else if (method == 'trade')
                     {
-                        this.tradeUpTo(opDecision.optionData.extraData, opDecision.actionCount);
+                        var rData = this.cache.getResourceData(opDecision.parentResource.costData.resourceName);
+                        var trades = opDecision.actionCount;
+                        if (rData.max != Infinity)
+                        {
+                            var availableCapacity = rData.max - rData.available;
+                            var tradesUntilFull = Math.ceil(availableCapacity / opDecision.optionData.ratio);
+                            trades = Math.min(trades, tradesUntilFull);
+                        }
+                        this.tradeUpTo(opDecision.optionData.extraData, trades);
                     }
                     else if (method == 'sacrifice')
                     {

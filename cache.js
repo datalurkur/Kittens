@@ -174,7 +174,7 @@ ajk.cache = {
                 // Special rules for this
                 var numShips = ajk.base.getResource('ship').value;
                 amount = (0.03 * numShips) + 1.5;
-                chance = ((0.35 * numShips) + 15) / 100;
+                chance = Math.min(100, (0.35 * numShips) + 15);
             }
 
             return amount * (chance / 100) * seasonModifier;
