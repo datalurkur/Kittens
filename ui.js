@@ -64,6 +64,7 @@ ajk.ui = {
         {
             'color': 'orangered',
             'on'   : true,
+            'alternateName': 'catpower',
         },
         'furs':
         {
@@ -319,7 +320,7 @@ ajk.ui = {
         newResourceToggles.append('label')
             .attr('for', d => d)
             .style('color', d => this.resourceInfo[d].color)
-            .text(d => d);
+            .text(d => this.resourceInfo[d].alternateName || d);
 
         resourceToggles.selectAll('div input')
             .property('checked', d => this.resourceInfo[d].on);
@@ -353,6 +354,7 @@ ajk.ui = {
             ];
 
             // Update lines
+            var label = this.resourceInfo[r].alternateName || r;
             var color = this.resourceInfo[r].color;
             var sets = data.perTickResources[r].sets;
             sets.forEach((s) => {
@@ -368,7 +370,7 @@ ajk.ui = {
             if (lastSet.values.length == 0) { return; }
             var lastValue = lastSet.values[lastSet.values.length - 1];
             perTickData.labels.push({
-                label: r,
+                label: label,
                 color: color,
                 y:     lastValue[1]
             });

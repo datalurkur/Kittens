@@ -230,6 +230,7 @@ var ajk = {
         },
         tradeHack: function(race, amt)
         {
+            if (amt == 0) { return {}; }
             var diplo = gamePage.diplomacy;
 
             // This is copied directly from the kittens code's diplomacy module
