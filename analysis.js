@@ -145,7 +145,12 @@ ajk.processors.config.defaultWeights = {
     'concreteHuts': 3,
     'unobtainiumHuts': 3,
 
-    'fluxCondensator': 4
+    // Time related junk
+    'sunspire': 3,
+    'unicornUtopia': 3,
+    'skyPalace': 3,
+    'fluxCondensator': 4,
+    'blackPyramid': 5
 };
 ajk.analysisModule.addPreprocessor(function(data, cache, itemMap, log) {
     log.debug('Applying default weights');

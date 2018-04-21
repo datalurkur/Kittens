@@ -549,6 +549,7 @@ ajk.core = {
 
         balanceStructures: function()
         {
+            // Smelter logic
             var smelters = ajk.base.getBuilding('smelter');
             if (smelters.val == 0) { return; }
             var cons = this.cache.getResourceConsumptionForItem('smelter');
@@ -560,10 +561,17 @@ ajk.core = {
                 return a + ((this.utilization[r] || 0) * prod[r]);
             }, 0);
             var ratio = prodImpact / (prodImpact + consImpact);
-            var active = Math.ceil(ratio * smelters.val);
-            if (active > smelters.val) { active = smelters.val; }
-            this.log.debug('Turning on ' + active + ' smelters');
-            smelters.on = active;
+            var targetSmelters = Math.min(Math.ceil(ratio * smelters.val), smelters.val);
+            this.log.debug('Setting ' + targetSmelters + ' / ' + smelters.val + ' smelters active');
+            smelters.on = targetSmelters;
+
+            // Power logic
+            var energyDelta = ajk.base.getEnergyProd() - ajk.base.getEnergyCons();
+            var biolab = ajk.base.getBuilding('biolab');
+            var biolabDelta = energyDelta * biolab.effects.energyConsumption;
+            var targetBiolabs = Math.min(Math.max(0, Math.floor(biolab.on + biolabDelta)), biolab.val);
+            this.log.debug('Setting ' + targetBiolabs + ' / ' + biolab.val + ' biolabs active');
+            biolab.on = targetBiolabs;
         },
 
         miscHacks: function()

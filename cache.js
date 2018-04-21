@@ -92,6 +92,11 @@ ajk.cache = {
             nextExplorationTarget: null,
         },
 
+        unicornCache:
+        {
+            expectedPerTick: {},
+        },
+
         resourceUnlocked: function(resourceName)
         {
             if (this.resourceCache.hasOwnProperty(resourceName)) { return this.resourceCache[resourceName].unlocked; }
@@ -317,6 +322,33 @@ ajk.cache = {
             }
         },
 
+        cacheUnicornData: function()
+        {
+            var unicornChanceRatio = ajk.base.getPerk('unicornmancy').researched ? 1.1 : 1;
+            unicornChanceRatio *= (1 + ajk.base.getEffect('timeRatio') * 0.25);
+
+            var riftChance = ajk.base.getEffect('riftChance');
+
+            var expectedRiftsPerDay = (riftChance * unicornChanceRatio) / 10000;
+            var expectedUnicornsPerRift = 500 * (1 + ajk.base.getEffect('unicornsRatioReligion') * 0.1);
+            var expectedUnicornsPerTick = (expectedRiftsPerDay * expectedUnicornsPerRift) / 10;
+            this.unicornCache.expectedPerTick['unicorns'] = expectedUnicornsPerTick;
+
+            var expectedAlicornDescentsPerDay = ajk.base.getEffect('alicornChance') / 10000;
+            var expectedAlicornsPerTick = expectedAlicornDescentsPerDay / 10;
+            this.unicornCache.expectedPerTick['alicorn'] = expectedAlicornsPerTick;
+
+            var expectedMeteorsPerDay = 0 + (ajk.base.getEffect('ivoryMeteorChance') * unicornChanceRatio) / 10000;
+            var expectedIvoryPerMeteor = (1000 * (1 + ajk.base.getEffect('ivoryMeteorRatio')));
+            var expectedIvoryPerTick = (expectedMeteorsPerDay * expectedIvoryPerMeteor) / 10;
+            this.unicornCache.expectedPerTick['ivory'] = expectedIvoryPerTick;
+
+            for (var resource in this.unicornCache.expectedPerTick)
+            {
+                this.resourceCache[resource].perTick += this.unicornCache.expectedPerTick[resource];
+            }
+        },
+
         cacheTradeData: function()
         {
             this.tradeCache = {
@@ -426,6 +458,9 @@ ajk.cache = {
 
         // Rebuild hunting data
         this.internal.cacheHuntingData();
+
+        // Rebuild unicorn data
+        this.internal.cacheUnicornData();
 
         // Rebuild effect cache
         this.internal.cacheEffects(itemMap);
