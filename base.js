@@ -50,6 +50,7 @@ var ajk = {
         getWorkshopUpgrade: function(upgradeName) { return gamePage.workshop.get(upgradeName);                             },
 
         // Religion stuff
+        getFaith:           function()            { return gamePage.religion.faith;                                        },
         getReligionUpgrade: function(upgradeName) { return gamePage.religion.getRU(upgradeName);                           },
         getZigguratUpgrade: function(upgradeName) { return gamePage.religion.getZU(upgradeName);                           },
 
@@ -57,6 +58,7 @@ var ajk = {
         getBuilding:        function(bldName)     { return gamePage.bld.get(bldName);                                      },
         getSeason:          function()            { return gamePage.calendar.season;                                       },
         getObserveButton:   function()            { return gamePage.calendar.observeBtn;                                   },
+        getDay:             function()            { return gamePage.calendar.day;                                          },
         getYear:            function()            { return gamePage.calendar.year;                                         },
         getPerk:            function(perkName)    { return gamePage.prestige.getPerk(perkName);                            },
         getEffect:          function(effectName)  { return gamePage.getEffect(effectName);                                 },
@@ -231,7 +233,6 @@ var ajk = {
         },
         tradeHack: function(race, amt)
         {
-            if (amt == 0) { return {}; }
             var diplo = gamePage.diplomacy;
 
             // This is copied directly from the kittens code's diplomacy module
@@ -257,7 +258,7 @@ var ajk = {
             diplo.gainTradeRes(yieldResTotal, amt);
             // ----------------------------------------------------------------------------------------
 
-            return yieldResTotal;
+            return yieldResTotal || {};
         },
         readyForPurchase: function(item)
         {

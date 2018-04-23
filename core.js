@@ -25,8 +25,6 @@ ajk.core = {
         // Operating variables
         tickThread:   null,
 
-        resetPending: false,
-
         year:        -1,
         season:      -1,
         successes:    0,
@@ -203,13 +201,15 @@ ajk.core = {
             }
         },
 
-        rebuildCache: function()
+        rebuildAndPrioritize: function()
         {
-            this.cache.rebuild(this.itemData);
-        },
+            var timerData = ajk.timer.start('Rebuilding / Analysis');
+            this.rebuildItemList();
+            timerData.interval('Rebuild Item List');
 
-        rebuildCostData: function()
-        {
+            this.cache.rebuild(this.itemData);
+            timerData.interval('Rebuild Effect / Resource / Trade Cache');
+
             this.data = {};
             for (var itemName in this.itemData)
             {
@@ -219,18 +219,6 @@ ajk.core = {
                 this.itemData[itemName].costData = costData;
                 this.log.unindent();
             }
-        },
-
-        rebuildAndPrioritize: function()
-        {
-            var timerData = ajk.timer.start('Rebuilding / Analysis');
-            this.rebuildItemList();
-            timerData.interval('Rebuild Item List');
-
-            this.rebuildCache();
-            timerData.interval('Rebuild Effect / Resource / Trade Cache');
-
-            this.rebuildCostData();
             timerData.interval('Rebuild Cost Data');
 
             // Custom cost data section
@@ -509,7 +497,10 @@ ajk.core = {
                     this.craftUpTo(craftName, numCrafts, false);
                 }
             }
+        },
 
+        convertCatpower: function()
+        {
             var catPower = this.cache.getResourceData('manpower');
             if (this.shouldConvert(catPower))
             {
@@ -517,21 +508,30 @@ ajk.core = {
                 this.log.debug('Sending hunters ' + numHunts + ' times');
                 ajk.base.hunt(numHunts);
             }
+        },
 
+        convertGold: function()
+        {
             var gold = this.cache.getResourceData('gold');
             if (this.shouldConvert(gold) && !this.inDemand('gold'))
             {
                 this.log.debug('Promoting kittens');
                 ajk.base.promote();
             }
+        },
 
+        convertFaith: function()
+        {
             var faith = this.cache.getResourceData('faith');
             if (this.shouldConvert(faith) && !this.inDemand('faith'))
             {
                 this.log.debug('Praising the sun');
                 ajk.base.praise();
             }
+        },
 
+        convertFurs: function()
+        {
             // We don't particularly care if these fail or not, for now...
             this.log.debug('Crafting all parchment');
             this.craftUpTo('parchment', Infinity, false);
@@ -561,6 +561,7 @@ ajk.core = {
                 return a + ((this.utilization[r] || 0) * prod[r]);
             }, 0);
             var ratio = prodImpact / (prodImpact + consImpact);
+            if (isNaN(ratio)) { ratio = 1; }
             var targetSmelters = Math.min(Math.ceil(ratio * smelters.val), smelters.val);
             this.log.debug('Setting ' + targetSmelters + ' / ' + smelters.val + ' smelters active');
             smelters.on = targetSmelters;
@@ -574,9 +575,25 @@ ajk.core = {
             biolab.on = targetBiolabs;
         },
 
+        upgradeItems: function()
+        {
+            for (var itemName in this.itemData)
+            {
+                var item = this.itemData[itemName].item;
+                var mData = item.model.metadata;
+                if (typeof mData.stage === 'undefined') { continue; }
+                if (mData.stage == mData.stages.length - 1) { continue; }
+                if (mData.stages[mData.stage + 1].stageUnlocked)
+                {
+                    this.log.info('Upgrading ' + mData.name + ' to stage ' + (mData.stage + 1));
+                    item.controller.upgradeCallback(item.model, true);
+                }
+            }
+        },
+
         miscHacks: function()
         {
-            if (ajk.base.getScience('theology').researched && !ajk.base.getJob('priest').unlocked)
+            if (ajk.base.getScience('theology').researched && (!ajk.base.getJob('priest').unlocked || ajk.base.getFaith() == 0))
             {
                 this.log.info('Praising the sun for the first time');
                 ajk.base.praise();
@@ -587,24 +604,14 @@ ajk.core = {
                 this.log.debug('Attempting to craft first megalith');
                 this.craftUpTo('megalith', 1, false);
             }
+
+            var steamworks = ajk.base.getBuilding('steamworks');
+            steamworks.on = steamworks.val;
         },
 
-        refreshUI: function()
+        standardTick: function(forceRecompute)
         {
-            ajk.ui.refreshPriorities(this.itemData, this.analysisData);
-            ajk.ui.refresh();
-        },
-
-        cacheNeedsUpdate: function()
-        {
-            return (this.successes > 0 ||
-                    ajk.base.getYear() != this.year ||
-                    ajk.base.getSeason() != this.season);
-        },
-
-        unsafeTick: function(forceRecompute)
-        {
-            var timerData = ajk.timer.start('Tick Execution');
+            var timerData = ajk.timer.start('Standard Tick Execution');
             this.events = [];
             this.crafts = [];
             this.trades = [];
@@ -613,7 +620,10 @@ ajk.core = {
             this.consumption = {};
             this.utilization = {};
 
-            var doRebuild = this.cacheNeedsUpdate() || forceRecompute;
+            var doRebuild = this.successes > 0 ||
+                            ajk.base.getYear() != this.year ||
+                            ajk.base.getSeason() != this.season ||
+                            forceRecompute;
             this.year = ajk.base.getYear();
             this.season = ajk.base.getSeason();
             this.successes = 0;
@@ -642,20 +652,17 @@ ajk.core = {
             this.applyAmbientProductionConsumption();
             timerData.interval('Collect Ambient Resource Production');
 
-            if (this.resetPending)
-            {
-                this.consumption['faith'] = Infinity;
-            }
-            else
-            {
-                this.pursuePriority();
-                timerData.interval('Pursue Priority');
-            }
+            this.pursuePriority();
+            timerData.interval('Pursue Priority');
 
             this.miscHacks();
             timerData.interval('Miscellaneous Hacks');
 
             this.convertResources();
+            this.convertCatpower();
+            this.convertGold();
+            this.convertFaith();
+            this.convertFurs();
             timerData.interval('Resource Conversion');
 
             this.computeResourceUtilization();
@@ -667,6 +674,9 @@ ajk.core = {
             ajk.jobs.update(doRebuild, this.utilization);
             timerData.interval('Kitten Management');
 
+            this.upgradeItems();
+            timerData.interval('Item Upgrades');
+
             ajk.statistics.update(
                 this.cache,
                 this.events,
@@ -676,8 +686,20 @@ ajk.core = {
             );
             timerData.interval('Statistics');
 
-            this.refreshUI();
+            ajk.ui.refreshPriorities(this.itemData, this.analysisData);
+            ajk.ui.refresh();
             timerData.end('UI Refresh');
+        },
+
+        unsafeTick: function(forceRecompute)
+        {
+            if (ajk.base.getYear() == 0 && ajk.base.getSeason() == 0 && ajk.base.getDay() == 0)
+            {
+            }
+            else
+            {
+                this.standardTick(forceRecompute);
+            }
         },
 
         tick: function(forceRecompute)
