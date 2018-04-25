@@ -588,6 +588,10 @@ ajk.ui = {
 
     buildDecisionTreeGraph: function()
     {
+        if (!this.itemDataCache.hasOwnProperty(this.decisionDetail))
+        {
+            this.decisionDetail = null;
+        }
         if (this.decisionDetail == null && this.analysisCache.priorityOrder.length > 0)
         {
             this.decisionDetail = this.analysisCache.priorityOrder[0];

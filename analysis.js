@@ -273,7 +273,7 @@ ajk.analysisModule.addPostprocessor(function(data, cache, itemMap, log) {
     for (var demand in data.purchaseDemand)
     {
         var demander = data.purchaseDemand[demand];
-        var modifier = data.weights[demander].weight;
+        var modifier = Math.min(2, Math.exp(data.weights[demander].weight) * 0.05);
         data.addModifier(demand, modifier, demander);
     }
 });
@@ -286,7 +286,7 @@ ajk.analysisModule.addPostprocessor(function(data, cache, itemMap, log) {
             var itemWeight = data.weights[v[0]].weight || -Infinity;
             return Math.max(a, itemWeight);
         }, -Infinity);
-        var modifier = Math.min(2, Math.exp(highestWeight) * 0.1);
+        var modifier = Math.min(2, Math.exp(highestWeight) * 0.05);
 
         cache.getItemsThatStore(resource).forEach((itemName) => {
             data.addModifier(itemName, modifier, resource + ' storage');
