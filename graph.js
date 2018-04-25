@@ -1,4 +1,58 @@
 ajk.graphFactory = {
+    buildDecisionTree: function(containerName, nodeData)
+    {
+        var container = d3.select('#' + containerName);
+        var containerDimensions = container.node().getBoundingClientRect();
+
+        if (containerDimensions.width == 0 || containerDimensions.height == 0) { return; }
+
+        var padding = [128, 64, 64, 64];
+
+        var tree = d3.layout.tree()
+            .sort(null)
+            .size([containerDimensions.height - padding[2] - padding[3], containerDimensions.width - padding[0] - padding[1]]);
+
+        var nodes = tree.nodes(nodeData);
+        var links = tree.links(nodes);
+
+        container.select('svg').remove();
+
+        var svg = container.append('svg')
+            .attr('width', containerDimensions.width)
+            .attr('height', containerDimensions.height);
+        var svgContainer = svg.append('g')
+            .attr('transform', 'translate(' + padding[0] + ',' + padding[2] + ')');
+
+        var edge = d3.svg.diagonal()
+            .projection(d => [d.y, d.x]);
+
+        var pathEdges = svgContainer.selectAll('path.nodeEdge').data(links).enter()
+            .append('path')
+            .attr('d', edge)
+            .attr('class', d => 'nodeEdge ' + d.target.style);
+
+        var nodeGroups = svgContainer.selectAll('g.node').data(nodes).enter()
+            .append('g')
+            .attr('class', 'node')
+            .attr('transform', d => 'translate(' + d.y + ',' + d.x + ')');
+
+        nodeGroups.append('circle')
+            .attr('class', d => 'nodeDot ' + d.style)
+            .attr('r', 4);
+        nodeGroups.append('text')
+            .attr('class', 'nodeLabel')
+            .attr('text-anchor', d => d.children ? 'end' : 'start')
+            .attr('dx', d => d.children ? -10 : 10)
+            .attr('dy', 3)
+            .text(d => d.label);
+        nodeGroups.append('text')
+            .attr('class', 'secondaryNodeLabel')
+            .attr('text-anchor', d => d.children ? 'end' : 'start')
+            .attr('dx', d => d.children ? -10 : 10)
+            .attr('dy', 15)
+            .text(d => d.count == 0 ? '' : d3.format('.2s')(d.count));
+    },
+
     buildGraphs: function(graphData)
     {
         graphData.forEach((d) => {

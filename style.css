@@ -72,6 +72,10 @@ div.debugControls {
     display: none;
 }
 
+div.ajkTab {
+    display: none;
+}
+
 /* Table styles */
 .ajkTable {
     font-family: 'Times New Roman', Times, serif;
@@ -80,39 +84,54 @@ div.debugControls {
     border-spacing: 0px;
 }
 
-.ajkTable tbody tr td.rightAlignedColumn {
-    text-align: right;
-}
-
 .ajkTable tbody tr:nth-child(odd) td {
-    background: rgb(232, 232, 232);
-}
-.scheme_dark .ajkTable tbody tr:nth-child(odd) td {
-    background: rgb(16, 16, 16);
-}
-.scheme_sleek .ajkTable tbody tr:nth-child(odd) td {
     background: rgb(16, 16, 16);
 }
 
-/* Inline text styles */
-span.ajkAdjustment {
-    margin-left: 5px;
-    margin-right: 5px;
-    width: 50px;
-    float: left;
+td.rightAlignedColumn {
     text-align: right;
 }
 
-span.ajkDisabled {
-    color: rgb(64, 64, 64);
+/* Span styles */
+span.columnHeader {
+    font-family: 'Times New Roman', Times, serif;
+    font-size: 18px;
+    color: white;
 }
 
-span.ajkAdjustment.positive {
+span.leftText {
+    float: left;
+    color: rgb(255, 255, 255);
+}
+span.ineligible {
+    color: rgb(256, 64, 64);
+}
+
+span.leftTextMinor {
+    float: left;
+    margin-left: 25px;
+    color: rgb(170, 170, 170);
+}
+
+span.rightText {
+    float: right;
+}
+span.positive {
     color: rgb(64, 256, 64);
 }
-
-span.ajkAdjustment.negative {
+span.negative {
     color: rgb(256, 64, 64);
+}
+
+span.rightTextMinor {
+    float: right;
+    margin-right: 25px;
+}
+span.positiveMinor {
+    color: rgb(32, 128, 32);
+}
+span.negativeMinor {
+    color: rgb(128, 32, 32);
 }
 
 /* Modal dialog */
@@ -120,7 +139,6 @@ span.ajkAdjustment.negative {
     display: none;
     position: fixed;
     z-index: 1;
-    padding-top: 100px;
     left: 0;
     top: 0;
     width: 100%;
@@ -268,4 +286,58 @@ circle.eventBubble.major {
     r: 7px;
     stroke: crimson;
     fill: crimson;
+}
+
+path.nodeEdge {
+    shape-rendering: crispEdges;
+    stroke: #444;
+    stroke-width: 2px;
+    fill: none;
+}
+path.nodeEdge.ready {
+    stroke: #141;
+}
+path.nodeEdge.waiting {
+    stroke: #430;
+}
+path.nodeEdge.selected {
+    stroke: #24a;
+}
+path.nodeEdge.blocked {
+    stroke: #511;
+}
+
+circle.nodeDot.head {
+    fill: #fff;
+    stroke: #fff;
+}
+circle.nodeDot.ready {
+    fill: #5d5;
+    stroke: #5d5;
+}
+circle.nodeDot.inactive {
+    fill: #333;
+    stroke: #333;
+}
+circle.nodeDot.selected {
+    fill: #36d;
+    stroke: #36d;
+}
+circle.nodeDot.waiting {
+    fill: #d80;
+    stroke: #d80;
+}
+circle.nodeDot.blocked {
+    fill: #b00;
+    stroke: #b00;
+}
+
+text.nodeLabel {
+    fill: #fff;
+    font-size: 12px;
+}
+
+text.secondaryNodeLabel {
+    fill: #aaa;
+    font-size: 12px;
 }

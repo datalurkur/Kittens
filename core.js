@@ -19,20 +19,20 @@ ajk.core = {
             'unobtainium': 'eludium'
         },
 
-        // Configuration
-
-
         // Operating variables
-        tickThread:   null,
+        tickThread:    null,
+        postResetDone: false,
 
-        year:        -1,
-        season:      -1,
-        successes:    0,
-        cache:        ajk.cache,
-        itemData:     {},
-        analysisData: null,
+        year:         -1,
+        season:       -1,
+        successes:     0,
+        cache:         ajk.cache,
+        itemData:      {},
+        analysisData:  null,
 
         priorityResourceDemand: {},
+        resourceCapacityDemand: {},
+        purchaseDemand:         {},
 
         events: [],
         crafts: [],
@@ -161,12 +161,12 @@ ajk.core = {
                 if (costType == 'purchase')
                 {
                     nonProductionCosts = true;
-                    // TODO - Pipe purchase priorites to analysis
+                    ajk.util.ensureKey(this.purchaseDemand, costData, []).push('tradeRouteDiscovery');
                 }
                 else if (costType == 'storage')
                 {
                     nonProductionCosts = true;
-                    // TODO - Pipe purchase priorites to analysis
+                    ajk.util.ensureKey(this.resourceCapacityDemand, costData[0], []).push(['tradeRouteDiscovery', costData[1]]);
                 }
                 else if (costType == 'accumulate')
                 {
@@ -198,57 +198,51 @@ ajk.core = {
                         decisionTree: null,
                     };
                 }
+                else
+                {
+                    this.itemData['tradeRouteDiscovery'] = {
+                        item:         null,
+                        type:         'meta',
+                        significance: 5,
+                        costData:     ajk.costDataFactory.buildBlockingCostData(),
+                        decisionTree: null
+                    };
+                }
             }
         },
 
-        rebuildAndPrioritize: function()
+        rebuildItems: function(resetMode)
         {
-            var timerData = ajk.timer.start('Rebuilding / Analysis');
             this.rebuildItemList();
-            timerData.interval('Rebuild Item List');
 
-            this.cache.rebuild(this.itemData);
-            timerData.interval('Rebuild Effect / Resource / Trade Cache');
+            this.cache.rebuild(this.itemData, !resetMode);
 
             this.data = {};
             for (var itemName in this.itemData)
             {
-                this.log.detail('Rebuilding cost data for ' + itemName);
-                this.log.indent();
                 var costData = ajk.costDataFactory.buildCostData(this.cache, this.itemData[itemName].item);
                 this.itemData[itemName].costData = costData;
-                this.log.unindent();
             }
-            timerData.interval('Rebuild Cost Data');
 
-            // Custom cost data section
-            this.rebuildExplorationData();
-            timerData.interval('Rebuild Exploration Data');
-            // No more custom cost data
+            if (!resetMode)
+            {
+                this.rebuildExplorationData();
+            }
+        },
 
-            this.analysisData = ajk.analysisModule.prepare(this.itemData);
-            timerData.interval('Analysis Preparation');
+        prioritize: function()
+        {
+            this.analysisData = ajk.analysisModule.prepare(this.itemData, this.resourceCapacityDemand, this.purchaseDemand);
 
             this.analysisData.eligible.forEach((itemName) => {
-                this.log.detail('Rebuilding decision tree for ' + itemName);
-                this.log.indent();
                 var decisionTree = ajk.decisionTreeFactory.buildDecisionTree(this.cache, this.itemData[itemName].costData);
                 this.itemData[itemName].decisionTree = decisionTree;
-                this.log.unindent();
             });
-            timerData.interval('Decision Tree Population');
 
             ajk.analysisModule.preprocess(this.analysisData, this.cache, this.itemData);
-            timerData.interval('Analysis preprocessing');
-
             ajk.analysisModule.prioritize(this.analysisData);
-            timerData.interval('Prioritization step 1');
-
             ajk.analysisModule.postprocess(this.analysisData, this.cache, this.itemData);
-            timerData.interval('Analysis postprocessing');
-
-            ajk.analysisModule.prioritize(this.analysisData);
-            timerData.end('Prioritization step 2');
+            ajk.analysisModule.finalize(this.analysisData);
         },
 
         inDemand: function(resourceName) { return this.priorityResourceDemand.hasOwnProperty(resourceName) && this.priorityResourceDemand[resourceName] > 0; },
@@ -370,7 +364,7 @@ ajk.core = {
             {
                 if (decision.demand[resource] == 0) { continue; }
                 var projectedPerTick = decision.demand[resource] / decision.maxTime;
-                this.log.detail('Purchase of ' + decision.optionData.identifier + ' consumes a projected ' + projectedPerTick + ' ' + resource + '(weighted ' + weight + ')');
+                this.log.detail('Purchase of ' + decision.optionData.identifier + ' consumes a projected ' + projectedPerTick + ' ' + resource + ' (weighted ' + weight + ')');
                 ajk.util.ensureKeyAndModify(this.consumption, resource, 0, projectedPerTick * weight);
             }
         },
@@ -391,6 +385,7 @@ ajk.core = {
         pursuePriority: function()
         {
             this.priorityResourceDemand = {};
+            var itemsPurchased = 0;
 
             var consumptionWeight = 1;
             this.analysisData.priorityOrder.forEach((itemName) => {
@@ -437,7 +432,7 @@ ajk.core = {
                             {
                                 this.log.info(method + 'd ' + opDecision.optionData.identifier);
                                 this.addEvent(item, opDecision.optionData.identifier, iData.type, iData.significance);
-                                this.successes += 1;
+                                itemsPurchased += 1;
                             }
                         }
                         else
@@ -446,6 +441,7 @@ ajk.core = {
                             this.applyProjectedConsumption(opDecision, consumptionWeight);
                         }
                     }
+                    else if (method == 'block') {} // Do nothing, waiting on external dependencies
                 }, null, true);
 
                 for (var resource in tree.demand)
@@ -457,6 +453,8 @@ ajk.core = {
 
                 consumptionWeight *= ajk.config.consumptionFalloff;
             });
+
+            return itemsPurchased;
         },
 
         shouldConvert: function(rData)
@@ -580,7 +578,9 @@ ajk.core = {
             for (var itemName in this.itemData)
             {
                 var item = this.itemData[itemName].item;
+                if (item == null) { continue; }
                 var mData = item.model.metadata;
+                if (typeof mData === 'undefined') { continue; }
                 if (typeof mData.stage === 'undefined') { continue; }
                 if (mData.stage == mData.stages.length - 1) { continue; }
                 if (mData.stages[mData.stage + 1].stageUnlocked)
@@ -609,24 +609,58 @@ ajk.core = {
             steamworks.on = steamworks.val;
         },
 
-        standardTick: function(forceRecompute)
+        resetAccumulators: function()
         {
-            var timerData = ajk.timer.start('Standard Tick Execution');
             this.events = [];
             this.crafts = [];
             this.trades = [];
+
+            this.resourceCapacityDemand = {};
+            this.purchaseDemand = {};
 
             this.production  = {};
             this.consumption = {};
             this.utilization = {};
 
+            this.successes = 0;
+        },
+
+        postResetLoop: function()
+        {
+            this.resetAccumulators();
+
+            while(1)
+            {
+                this.rebuildItems(true);
+                this.prioritize();
+                var itemsBuilt = this.pursuePriority();
+                this.upgradeItems();
+                if (itemsBuild == 0) { break; }
+                this.successes += itemsBuilt;
+            }
+
+            ajk.statistics.update(
+                this.cache,
+                this.events,
+                this.crafts,
+                this.trades,
+                this.utilization
+            );
+        },
+
+        standardTick: function(forceRecompute)
+        {
+            var timerData = ajk.timer.start('Standard Tick Execution');
+
             var doRebuild = this.successes > 0 ||
                             ajk.base.getYear() != this.year ||
                             ajk.base.getSeason() != this.season ||
                             forceRecompute;
+
             this.year = ajk.base.getYear();
             this.season = ajk.base.getSeason();
-            this.successes = 0;
+
+            this.resetAccumulators();
 
             this.checkForObservationEvent();
             timerData.interval('Event Observation');
@@ -634,7 +668,8 @@ ajk.core = {
             // If we didn't build anything previously, we don't need to recompute priorities and such
             if (doRebuild)
             {
-                this.rebuildAndPrioritize();
+                this.rebuildItems(false);
+                this.prioritize();
                 timerData.interval('Rebuild and Prioritize');
             }
             else
@@ -652,7 +687,7 @@ ajk.core = {
             this.applyAmbientProductionConsumption();
             timerData.interval('Collect Ambient Resource Production');
 
-            this.pursuePriority();
+            this.successes += this.pursuePriority();
             timerData.interval('Pursue Priority');
 
             this.miscHacks();
@@ -686,15 +721,20 @@ ajk.core = {
             );
             timerData.interval('Statistics');
 
-            ajk.ui.refreshPriorities(this.itemData, this.analysisData);
+            ajk.ui.refreshAnalysis(this.itemData, this.analysisData);
             ajk.ui.refresh();
             timerData.end('UI Refresh');
         },
 
         unsafeTick: function(forceRecompute)
         {
-            if (ajk.base.getYear() == 0 && ajk.base.getSeason() == 0 && ajk.base.getDay() == 0)
+            if (ajk.base.getYear() == 0 &&
+                ajk.base.getSeason() == 0 &&
+                ajk.base.getDay() == 0 &&
+                !this.postResetDone)
             {
+                this.postResetLoop();
+                this.postResetDone = true;
             }
             else
             {

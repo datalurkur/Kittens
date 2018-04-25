@@ -160,6 +160,16 @@ ajk.costDataFactory = {
         return this.internal.buildOptionCostData(identifier, cache, method, productionCosts, [], 1, data);
     },
 
+    buildBlockingCostData: function()
+    {
+        return {
+            method:      'block',
+            dependencies: [],
+            ratio:        1,
+            extraData:    null
+        };
+    },
+
     buildCombinedCostData: function(optionA, optionB)
     {
         var deps = [];
@@ -269,17 +279,25 @@ ajk.decisionTreeFactory = {
                         this.infiniteWaitTimes = this.parentResource.infiniteWaitTimes;
                     }
 
-                    this.maxTime = 0;
-                    this.dependencies.forEach((dep) => {
-                        dep.update();
-                        this.capacityLimiters = this.capacityLimiters.concat(dep.capacityLimiters);
-                        this.capacityBlockers = this.capacityBlockers.concat(dep.capacityBlockers);
-                        if (this.maxTime < dep.decisionTime)
-                        {
-                            this.maxTime    = dep.decisionTime;
-                            this.bottleneck = dep.bottleneck;
-                        }
-                    });
+                    // Kind of a hack?  Eh.
+                    if (this.optionData.method == 'block')
+                    {
+                        this.maxTime = Infinity;
+                    }
+                    else
+                    {
+                        this.maxTime = 0;
+                        this.dependencies.forEach((dep) => {
+                            dep.update();
+                            this.capacityLimiters = this.capacityLimiters.concat(dep.capacityLimiters);
+                            this.capacityBlockers = this.capacityBlockers.concat(dep.capacityBlockers);
+                            if (this.maxTime < dep.decisionTime)
+                            {
+                                this.maxTime    = dep.decisionTime;
+                                this.bottleneck = dep.bottleneck;
+                            }
+                        });
+                    }
 
                     // This implicitly happens during update
                     this.consumptionApplied = true;

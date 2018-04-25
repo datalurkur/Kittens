@@ -205,7 +205,7 @@ ajk.cache = {
                 var culture = ajk.base.getResource('culture');
                 if (culture.maxValue < 1500)
                 {
-                    return ['storage', 'culture'];
+                    return ['storage', ['culture', 1500]];
                 }
                 else if (culture.value < 1500)
                 {
@@ -229,7 +229,7 @@ ajk.cache = {
                 }
                 else if (ajk.base.getResource('science').maxValue < 125000)
                 {
-                    return ['storage', 'science'];
+                    return ['storage', ['science', 125000]];
                 }
                 else
                 {
@@ -442,16 +442,19 @@ ajk.cache = {
         },
     },
 
-    rebuild: function(itemMap)
+    rebuild: function(itemMap, includeTransforms)
     {
         this.internal.log.debug('Rebuilding cache');
         this.internal.log.indent();
 
-        // Cache trade data
-        this.internal.cacheTradeData();
+        if (includeTransforms)
+        {
+            // Cache trade data
+            this.internal.cacheTradeData();
 
-        // Rebuild craft cache
-        this.internal.cacheCraftData();
+            // Rebuild craft cache
+            this.internal.cacheCraftData();
+        }
 
         // Rebuild resource cache
         this.internal.cacheResourceData();
@@ -517,6 +520,11 @@ ajk.cache = {
     getResourceCostForCraft: function(resourceName, craftName)
     {
         return this.internal.craftCache.costToCrafts[resourceName][craftName];
+    },
+
+    getItemsThatStore: function(resourceName)
+    {
+        return this.internal.effectCache['storage'].resourceToItems[resourceName];
     },
 
     isCraftUnlocked: function(craftName)

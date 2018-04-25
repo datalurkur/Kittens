@@ -181,6 +181,10 @@ ajk.ui = {
     cachedGraphData: [],
     resizeListener:  null,
 
+    itemDataCache:   null,
+    analysisCache:   null,
+    decisionDetail:  null,
+
     graphManip:
     {
         zoomSpeed:   0.001,
@@ -198,15 +202,24 @@ ajk.ui = {
         this.panelState[panel.id] = !collapsed;
     },
 
+    switchToTab: function(tabDescriptor)
+    {
+        $('.ajkTab').css('display', 'none');
+        $(tabDescriptor).css('display', 'block');
+    },
+
     toggleModalDialog: function(visible)
     {
         this.modalDialogOpen = visible;
+
+        $('#ajkModalWindow').css('display', visible ? 'block' : 'none');
+
         if (visible)
         {
             this.updateGraphData();
             this.buildGraphs();
+            this.refreshAnalysisUI();
         }
-        $('#ajkModalWindow').css('display', visible ? 'block' : 'none');
     },
 
     toggleGraphResource: function(resource)
@@ -221,6 +234,12 @@ ajk.ui = {
         channelData.on = !channelData.on;
         this.updateGraphData();
         this.buildGraphs();
+    },
+
+    setDecisionDetail: function(itemName)
+    {
+        this.decisionDetail = itemName;
+        this.buildDecisionTreeGraph();
     },
 
     convertTicksToTimeString: function(ticks)
@@ -444,6 +463,9 @@ ajk.ui = {
     {
         this.createLogChannelToggles();
 
+        $('#analysisTabLink').click(function() { ajk.ui.switchToTab('#analysisTab'); });
+        $('#graphsTabLink').click(function() { ajk.ui.switchToTab('#graphsTab'); });
+
         // Register events for accordion panels
         $('.accordion').click(function() { ajk.ui.togglePanel(this); });
         $('.inlineAccordion').click(function() { ajk.ui.togglePanel(this); });
@@ -485,6 +507,10 @@ ajk.ui = {
             this.buildGraphs();
         });
 
+        $('#refreshAnalysisButton').click(() => {
+            this.refreshAnalysisUI();
+        });
+
         // Register events for the modal window
         $('#ajkModalWindowOpenButton').click(() => { this.toggleModalDialog(true); });
         $('#ajkModalWindowCloseButton').click(() => { this.toggleModalDialog(false); });
@@ -521,25 +547,132 @@ ajk.ui = {
         timerData.end('Update Toggle States');
     },
 
-    refreshPriorities: function(itemData, analysisData)
+    refreshAnalysis: function(itemData, analysisData)
     {
-        var table = $('#priorityTable');
-        table.empty();
+        this.itemDataCache = itemData;
+        this.analysisCache = analysisData;
+    },
 
-        analysisData.priorityOrder.forEach((priority) => {
+    buildDecisionTreeOptionNode: function(node, active, labelOverride)
+    {
+        var a = active;
+        var style = active ? 'selected' : 'inactive';
+        if (node.method == 'block')
+        {
+            a = false;
+            style = 'blocked';
+        }
+        return {
+            active:   a,
+            style:    labelOverride ? 'head' : style,
+            label:    labelOverride || node.optionData.method,
+            count:    node.actionCount,
+            children: node.dependencies.map(d => this.buildDecisionTreeDependencyNode(d, a))
+        };
+    },
+
+    buildDecisionTreeDependencyNode: function(node, active)
+    {
+        var style = 'waiting';
+        if (node.decisionTime == Infinity || node.capacityBlockers.length > 0) { style = 'blocked'; }
+        else if (node.decisionTime == 0) { style = 'ready';   }
+
+        return {
+            active:   active,
+            style:    active ? style : 'inactive',
+            label:    node.costData.resourceName,
+            count:    node.deficit,
+            children: node.options.map(d => this.buildDecisionTreeOptionNode(d, active && d == node.decision))
+        };
+    },
+
+    buildDecisionTreeGraph: function()
+    {
+        if (this.decisionDetail == null && this.analysisCache.priorityOrder.length > 0)
+        {
+            this.decisionDetail = this.analysisCache.priorityOrder[0];
+        }
+        if (this.decisionDetail == null) { return; }
+
+        var dNode = this.itemDataCache[this.decisionDetail].decisionTree;
+        var graphData = this.buildDecisionTreeOptionNode(dNode, true, this.decisionDetail);
+        ajk.graphFactory.buildDecisionTree('decisionTreeContainer', graphData);
+    },
+
+    refreshAnalysisUI: function()
+    {
+        var pTable = $('#priorityTable');
+        pTable.empty();
+
+        var aTable = $('#analysisTable');
+        aTable.empty();
+
+        var dContainer = $('#decisionTreeContainer');
+        dContainer.empty();
+
+        if (this.analysisCache == null) { return; }
+
+        this.analysisCache.priorityOrder.forEach((priority) => {
             var row = document.createElement('tr');
 
             var nameColumn = document.createElement('td');
             nameColumn.innerHTML = priority;
+            nameColumn.addEventListener('click', () => this.setDecisionDetail(priority));
             row.append(nameColumn);
 
             var timeColumn = document.createElement('td');
             timeColumn.className = 'rightAlignedColumn';
-            timeColumn.innerHTML = this.convertTicksToTimeString(itemData[priority].decisionTree.maxTime);
+            timeColumn.innerHTML = this.convertTicksToTimeString(this.itemDataCache[priority].decisionTree.maxTime);
             row.append(timeColumn);
 
-            table.append(row);
+            pTable.append(row);
         });
+
+
+        Object.keys(this.analysisCache.weights).sort((a,b) => (this.analysisCache.weights[b].weight - this.analysisCache.weights[a].weight)).forEach((itemName) => {
+            var row = document.createElement('tr');
+
+            var column = document.createElement('td');
+
+            var itemSpan = document.createElement('span');
+            itemSpan.className = 'leftText';
+            if (this.analysisCache.eligible.indexOf(itemName) == -1)
+            {
+                itemSpan.className += ' ineligible';
+            }
+            itemSpan.innerHTML = itemName;
+            itemSpan.addEventListener('click', () => this.setDecisionDetail(itemName));
+            column.append(itemSpan);
+
+            var itemWeight = document.createElement('span');
+            itemWeight.className = 'rightText';
+            var weight = this.analysisCache.weights[itemName].weight;
+                 if (weight < 0) { itemWeight.className += ' negative'; }
+            else if (weight > 0) { itemWeight.className += ' positive'; }
+            itemWeight.innerHTML = weight.toFixed(2);
+            column.append(itemWeight);
+
+            this.analysisCache.weights[itemName].modifiers.forEach((modifier) => {
+                column.append(document.createElement('br'));
+
+                var modSpan = document.createElement('span');
+                modSpan.className = 'leftTextMinor';
+                modSpan.innerHTML = modifier[0];
+                column.append(modSpan);
+
+                var modWeightSpan = document.createElement('span');
+                modWeightSpan.className = 'rightTextMinor';
+                     if (modifier[1] < 0) { modWeightSpan.className += ' negativeMinor'; }
+                else if (modifier[1] > 0) { modWeightSpan.className += ' positiveMinor'; }
+                modWeightSpan.innerHTML = modifier[1].toFixed(2);
+                column.append(modWeightSpan);
+            });
+
+            row.append(column);
+            aTable.append(row);
+        });
+
+        this.buildDecisionTreeGraph();
     },
 };
 

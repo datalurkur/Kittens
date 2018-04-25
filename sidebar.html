@@ -39,6 +39,7 @@
     </div>
 </div>
 
+<!--
 <div>
     <button class="accordion">Current Priorities</button>
     <div class="accordionPanel">
@@ -48,6 +49,7 @@
     </div>
     <br/>
 </div>
+-->
 
 <div>
     <input type="button" id="ajkModalWindowOpenButton" value="Details" style="width:100%" />
@@ -55,28 +57,61 @@
 
 <div id="ajkModalWindow" class="modal">
   <div class="modalContent">
-    <input type="button" id="clearStatisticsButton" value="Clear Statistics" style="width:200px" />
+    <a href="#" id="analysisTabLink">Analysis</a> |
+    <a href="#" id="graphsTabLink">Graphs</a>
     <span class="modalCloseButton" id="ajkModalWindowCloseButton">&times;</span>
-    <table class="boundedTable">
-        <tbody>
-            <tr>
-                <td class="toggleContainer">
-                    <span style="color:white;">Event Filters</span>
-                    <div id="events"></div>
-                    <br/>
-                    <span style="color:white;">Resource Filters</span>
-                    <div id="resources"></div>
-                </td>
-                <td>
-                    <div class="graphContainer">
-                        <div id="purchasesGraph"></div>
-                        <div id="perTickGraph"></div>
-                        <div id="utilizationGraph"></div>
-                    </div>
-                </td>
-            </tr>
-        </tbody>
-    </table>
+
+    <!-- Graphs Tab -->
+    <div id="graphsTab" class="ajkTab">
+        <input type="button" id="clearStatisticsButton" value="Clear Statistics" style="width:200px;" />
+        <table class="boundedTable">
+            <tbody>
+                <tr>
+                    <td class="toggleContainer">
+                        <span style="color:white;">Event Filters</span>
+                        <div id="events"></div>
+                        <br/>
+                        <span style="color:white;">Resource Filters</span>
+                        <div id="resources"></div>
+                    </td>
+                    <td>
+                        <div class="graphContainer">
+                            <div id="purchasesGraph"></div>
+                            <div id="perTickGraph"></div>
+                            <div id="utilizationGraph"></div>
+                        </div>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Analysis Tab -->
+    <div id="analysisTab" class="ajkTab" style="display:block;">
+        <input type="button" id="refreshAnalysisButton" value="Refresh" style="width:200px;" />
+        <table style="width:100%">
+            <tbody>
+                <tr>
+                    <td style="vertical-align:top; width:200px;">
+                        <span class="columnHeader">Current Priorities</span>
+                        <table class="ajkTable">
+                            <tbody id="priorityTable"></tbody>
+                        </table>
+                    </td>
+                    <td style="vertical-align:top; width:250px;">
+                        <span class="columnHeader">Weights and Modifiers</span>
+                        <table class="ajkTable">
+                            <tbody id="analysisTable"></tbody>
+                        </table>
+                    </td>
+                    <td style="vertical-align:top;">
+                        <span class="columnHeader">Decision Tree</span>
+                        <div id="decisionTreeContainer" style="height:1000px;"></div>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
   </div>
 </div>
 <br/>

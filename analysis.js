@@ -8,11 +8,13 @@ ajk.analysisModule = {
         preprocessors:  [],
         postprocessors: [],
 
-        buildEmptyAnalysisData: function(itemMap)
+        buildEmptyAnalysisData: function(itemMap, capLimits, purchaseDemand)
         {
             var data = {
                 eligible:                      Object.keys(itemMap),
-                resourceCapacityLimitations:   {},
+                selected:                      [],
+                resourceCapacityLimitations:   capLimits,
+                purchaseDemand:                purchaseDemand,
                 resourceProductionLimitations: {},
                 weights:                       {},
                 priorityOrder:                 [],
@@ -27,7 +29,7 @@ ajk.analysisModule = {
         },
     },
 
-    prepare: function(itemMap) { return this.internal.buildEmptyAnalysisData(itemMap); },
+    prepare: function(itemMap, capLimits, purchaseDemand) { return this.internal.buildEmptyAnalysisData(itemMap, capLimits, purchaseDemand); },
     preprocess: function(data, cache, itemMap)
     {
         this.internal.log.debug('Performing analysis preprocessing pass');
@@ -36,6 +38,11 @@ ajk.analysisModule = {
     prioritize: function(data)
     {
         data.priorityOrder = data.eligible;
+        data.priorityOrder = data.priorityOrder.sort((a, b) => { return data.weights[b].weight - data.weights[a].weight; });
+    },
+    finalize: function(data)
+    {
+        data.priorityOrder = data.selected;
         data.priorityOrder = data.priorityOrder.sort((a, b) => { return data.weights[b].weight - data.weights[a].weight; });
     },
     postprocess: function(data, cache, itemMap)
@@ -86,7 +93,7 @@ ajk.analysisModule.addPreprocessor(function(data, cache, itemMap, log) {
         {
             log.debug('Excluding ' + itemName + ' because of lacking capacity');
             decisionTree.capacityBlockers.forEach((blocker) => {
-                ajk.util.ensureKey(data.resourceCapacityLimitations, blocker[0], []).push(blocker[1]);
+                ajk.util.ensureKey(data.resourceCapacityLimitations, blocker[0], []).push([itemName, blocker[1]]);
             });
         }
         else
@@ -112,7 +119,7 @@ ajk.analysisModule.addPreprocessor(function(data, cache, itemMap, log) {
             if (cache.getResourceData(resourceName).perTick - consumption[resourceName] <= 0)
             {
                 exclude = true;
-                ajk.util.ensureKey(data.resourceProductionLimitations, resourceName, []).push(consumption[resourceName]);
+                ajk.util.ensureKey(data.resourceProductionLimitations, resourceName, []).push([itemName, consumption[resourceName]]);
             }
         }
         if (!exclude)
@@ -132,6 +139,9 @@ ajk.processors.config.defaultWeights = {
     'logHouse': 1,
     'mansion': 1,
     'spaceStation': 1,
+
+    // Trading
+    'tradeRouteDiscovery': 2,
 
     // Important sciences
     'theology': 2,
@@ -154,21 +164,22 @@ ajk.processors.config.defaultWeights = {
 };
 ajk.analysisModule.addPreprocessor(function(data, cache, itemMap, log) {
     log.debug('Applying default weights');
-    data.eligible.forEach((itemName) => {
+    Object.keys(itemMap).forEach((itemName) => {
         data.weights[itemName] = {
-            weight:    ajk.processors.config.defaultWeights[itemName] || 0,
+            weight:    0,
             modifiers: []
         };
+        if (ajk.processors.config.defaultWeights.hasOwnProperty(itemName))
+        {
+            data.addModifier(itemName, ajk.processors.config.defaultWeights[itemName], 'default weight');
+        }
     });
 });
 
 // Happiness
 ajk.analysisModule.addPreprocessor(function(data, cache, itemMap, log) {
-    if (data.eligible.indexOf('amphitheatre') != -1)
-    {
-        var mod = (2 - ajk.base.getHappiness()) * 3;
-        data.addModifier('amphitheatre', mod, 'happiness');
-    }
+    var mod = (2 - ajk.base.getHappiness()) * 3;
+    data.addModifier('amphitheatre', mod, 'happiness');
 });
 
 // Type emphasis
@@ -180,11 +191,11 @@ ajk.processors.config.typeBonuses = {
 };
 ajk.analysisModule.addPreprocessor(function(data, cache, itemMap, log) {
     log.debug('Applying one-shot bonuses');
-    data.eligible.forEach((itemName) =>
+    Object.keys(itemMap).forEach((itemName) =>
     {
         if (ajk.processors.config.typeBonuses.hasOwnProperty(itemMap[itemName].type))
         {
-            data.addModifier(itemName, ajk.processors.config.typeBonuses[itemMap[itemName].type], 'type');
+            data.addModifier(itemName, ajk.processors.config.typeBonuses[itemMap[itemName].type], itemMap[itemName].type);
         }
     });
 });
@@ -235,7 +246,7 @@ ajk.analysisModule.addPreprocessor(function(data, cache, itemMap, log) {
     log.debug('Prices up to inflection point are scaled as ' + params.slope + '*x + ' + params.max);
     log.debug('Prices past the inflection point are scaled as ' + params.a + '*(x + ' + params.b + ')^(-1) + ' + params.c);
 
-    data.eligible.forEach((itemName) => {
+    Object.keys(itemMap).forEach((itemName) => {
         var costTime = itemMap[itemName].decisionTree.maxTime;
         var modifier = 0;
         if (costTime < params.inflection[0] || !params.solutionExists)
@@ -255,6 +266,32 @@ ajk.analysisModule.addPreprocessor(function(data, cache, itemMap, log) {
     });
 
     log.unindent();
+});
+
+// Purchase demand
+ajk.analysisModule.addPostprocessor(function(data, cache, itemMap, log) {
+    for (var demand in data.purchaseDemand)
+    {
+        var demander = data.purchaseDemand[demand];
+        var modifier = data.weights[demander].weight;
+        data.addModifier(demand, modifier, demander);
+    }
+});
+
+// Capacity providers
+ajk.analysisModule.addPostprocessor(function(data, cache, itemMap, log) {
+    for (var resource in data.resourceCapacityLimitations)
+    {
+        var highestWeight = data.resourceCapacityLimitations[resource].reduce((a, v) => {
+            var itemWeight = data.weights[v[0]].weight || -Infinity;
+            return Math.max(a, itemWeight);
+        }, -Infinity);
+        var modifier = Math.min(2, Math.exp(highestWeight) * 0.1);
+
+        cache.getItemsThatStore(resource).forEach((itemName) => {
+            data.addModifier(itemName, modifier, resource + ' storage');
+        });
+    }
 });
 
 // Competition
@@ -283,7 +320,7 @@ ajk.analysisModule.addPostprocessor(function(data, cache, itemMap, log) {
     });
     log.debug('Filtered out ' + (data.eligible.length - meetsCriteria.length) + ' items');
     log.unindent();
-    data.eligible = meetsCriteria;
+    data.selected = meetsCriteria;
 });
 
 // Containment Chamber Throttling
@@ -291,7 +328,7 @@ ajk.analysisModule.addPostprocessor(function(data, cache, itemMap, log) {
     log.debug('Throttling containment chamber purchasing');
     log.indent();
     var needsAntimatterStorage = false;
-    data.eligible.forEach((itemName) => {
+    data.selected.forEach((itemName) => {
         if (itemMap[itemName].decisionTree.capacityBlockers.hasOwnProperty('antimatter'))
         {
             needsAntimatterStorage = true;
@@ -299,10 +336,10 @@ ajk.analysisModule.addPostprocessor(function(data, cache, itemMap, log) {
     });
     if (!needsAntimatterStorage)
     {
-        var index = data.eligible.indexOf('containmentChamber');
+        var index = data.selected.indexOf('containmentChamber');
         if (index != -1)
         {
-            data.eligible.splice(index, 1);
+            data.selected.splice(index, 1);
         }
     }
     log.unindent();
