@@ -349,6 +349,19 @@ ajk.cache = {
             }
         },
 
+        cacheMiscProduction: function()
+        {
+            var expectedAntimatterPerYear = ajk.base.getEffect('antimatterProduction');
+            this.resourceCache['antimatter'].perTick += expectedAntimatterPerYear / 4000;
+
+            var daysInParadox = 10 + ajk.base.getEffect('temporalParadoxDay');
+            var daysBetweenParadox = daysInParadox + 100 * Math.max(1 , 100 / ajk.base.getBuilding('chronosphere').on);
+            var percentTimeInParadox = daysInParadox / daysBetweenParadox;
+
+            var expectedVoidPerDay = ajk.base.getVoidStats() * percentTimeInParadox;
+            this.resourceCache['void'].perTick += expectedVoidPerDay / 10;
+        },
+
         cacheTradeData: function()
         {
             this.tradeCache = {
@@ -465,6 +478,9 @@ ajk.cache = {
         // Rebuild unicorn data
         this.internal.cacheUnicornData();
 
+        // Rebuild misc resource data
+        this.internal.cacheMiscProduction();
+
         // Rebuild effect cache
         this.internal.cacheEffects(itemMap);
 
@@ -481,6 +497,12 @@ ajk.cache = {
 
         // Rebuild hunting data
         this.internal.cacheHuntingData();
+
+        // Rebuild unicorn data
+        this.internal.cacheUnicornData();
+
+        // Rebuild misc resource data
+        this.internal.cacheMiscProduction();
     },
 
     getAllResources: function()

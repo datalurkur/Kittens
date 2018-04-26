@@ -62,6 +62,7 @@ var ajk = {
         getYear:            function()            { return gamePage.calendar.year;                                         },
         getPerk:            function(perkName)    { return gamePage.prestige.getPerk(perkName);                            },
         getEffect:          function(effectName)  { return gamePage.getEffect(effectName);                                 },
+        getVoidStats:       function()            { return gamePage.resPool.getVoidQuantityStatistically();                },
 
         // Special hackery
         // This is used for determining resource production vectors for kittens

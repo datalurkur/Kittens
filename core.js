@@ -565,7 +565,8 @@ ajk.core = {
             smelters.on = targetSmelters;
 
             // Power logic
-            var energyDelta = ajk.base.getEnergyProd() - ajk.base.getEnergyCons();
+            // Keep power production above zero
+            var energyDelta = ajk.base.getEnergyProd() - ajk.base.getEnergyCons() - 1;
             var biolab = ajk.base.getBuilding('biolab');
             var biolabDelta = energyDelta * biolab.effects.energyConsumption;
             var targetBiolabs = Math.min(Math.max(0, Math.floor(biolab.on + biolabDelta)), biolab.val);

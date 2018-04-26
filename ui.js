@@ -5,6 +5,16 @@ ajk.ui = {
 
     resourceInfo:
     {
+        'antimatter':
+        {
+            'color': 'grey',
+            'on': false,
+        },
+        'void':
+        {
+            'color': 'black',
+            'on': false,
+        },
         'catnip':
         {
             'color': 'limeGreen',
