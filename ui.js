@@ -469,6 +469,25 @@ ajk.ui = {
         this.buildGraphs();
     },
 
+    showAlert: function(alertMessage)
+    {
+        var messageLines = alertMessage.split('\n');
+        $('#ajkAlertBox').css('display', 'block');
+        var content = $('#ajkAlertContent');
+        content.empty();
+        messageLines.forEach((line) => {
+            var lineSpan = document.createElement('span');
+            lineSpan.textContent = line;
+            content.append(lineSpan);
+            content.append(document.createElement('br'));
+        });
+    },
+
+    hideAlert: function()
+    {
+        $('#ajkAlertBox').css('display', 'none');
+    },
+
     init: function()
     {
         this.createLogChannelToggles();
@@ -529,13 +548,21 @@ ajk.ui = {
             {
                 this.toggleModalDialog(false);
             }
+            else if (event.target == $('#ajkAlertBox')[0])
+            {
+                this.hideAlert();
+            }
         });
+
+        $('#ajkModalAlertCloseButton').click(() => { this.hideAlert(); });
 
         // Register events for the graph container
         this.resizeListener = new ResizeObserver(() => { this.buildGraphs(); });
         this.resizeListener.observe(d3.select('.graphContainer').node());
 
         $('.graphContainer').on('wheel', (event) => { this.zoomGraphs(event); });
+
+        ajk.log.setErrorCallback(this.showAlert);
     },
 
     refresh: function()

@@ -352,6 +352,8 @@ ajk.log = {
         debugQueue: [],
         logQueue:   [],
 
+        errorCallback: null,
+
         logInternal: function(message, level, channel)
         {
             var messages = message.split('\n');
@@ -391,6 +393,11 @@ ajk.log = {
             var mask = this.channels[channelName];
             return (this.channelMask & mask) != 0;
         },
+    },
+
+    setErrorCallback: function(callback)
+    {
+        this.internal.errorCallback = callback;
     },
 
     toggleChannel: function(channelName)
@@ -440,9 +447,10 @@ ajk.log = {
             error:  function(message)
             {
                 ajk.log.internal.logInternal(message, ajk.log.internal.errorLevel, this.channel);
-                if (ajk.config.alertOnError)
+                if (ajk.config.alertOnError && ajk.log.internal.errorCallback != null)
                 {
-                    alert('An error occured in the Kitten Savant plugin!\nContact the developer.\nDetails:\n' + message);
+                    var alertMessage = 'An error occured in the Kitten Savant plugin!\nContact the developer.\nDetails:\n' + message;
+                    ajk.log.internal.errorCallback(alertMessage);
                 }
                 ajk.core.shouldTick(false);
                 ajk.log.flush(ajk.config.detailedLogsOnError);

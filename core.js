@@ -333,12 +333,34 @@ ajk.core = {
             if (actualCount == 0) { return; }
             if (!button.controller.sacrifice(button.model, actualCount))
             {
-                this.log.error('Failed to sacrifice ' + identifier + ' ' + actualCount + ' times');
+                // FIXME - Figure out why this happens
+                this.log.warn('Failed to sacrifice ' + identifier + ' ' + actualCount + ' times');
             }
             else
             {
                 this.log.debug('Sacrificed ' + identifier + ' ' + actualCount + ' times');
             }
+        },
+
+        purchaseUpTo: function(button, target, method, identifier)
+        {
+            var current = 0;
+            while(button.controller.hasResources(button.model) && current < target)
+            {
+                button.controller.buyItem(button.model, {}, (result) => {
+                    if (result)
+                    {
+                        this.log.warn('Failed to ' + method + ' ' + identifier);
+                        return;
+                    }
+                    else
+                    {
+                        current += 1;
+                    }
+                });
+            }
+            if (current == 0) { return; }
+            this.log.debug(method + 'd ' + identifier + ' ' + current + ' / ' + target + ' times');
         },
 
         applyAmbientProductionConsumption: function()
@@ -416,6 +438,10 @@ ajk.core = {
                     else if (method == 'sacrifice')
                     {
                         this.sacrificeUpTo(opDecision.optionData.extraData, opDecision.actionCount, opDecision.optionData.identifier);
+                    }
+                    else if (method == 'refine')
+                    {
+                        this.purchaseUpTo(opDecision.optionData.extraData, opDecision.actionCount, method, opDecision.optionData.identifier);
                     }
                     else if (method == 'purchase' || method == 'explore')
                     {

@@ -157,6 +157,14 @@ span.negativeMinor {
     background: #201F1D;
 }
 
+.alertModalContent {
+    margin: auto;
+    padding: 20px;
+    border: 1px solid #888;
+    width: 500px;
+    background: #201F1D;
+}
+
 .modalCloseButton {
     float: right;
     font-size: 28px;
