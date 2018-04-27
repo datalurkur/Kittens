@@ -556,7 +556,7 @@ ajk.cache = {
 
     getExplorationData: function()
     {
-        if (this.internal.tradeCache.nextExplorationTarget == null) { return {}; }
+        if (this.internal.tradeCache.nextExplorationTarget == null) { return null; }
         return this.internal.tradeCache.exploration[this.internal.tradeCache.nextExplorationTarget];
     },
 };

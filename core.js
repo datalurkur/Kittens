@@ -345,19 +345,19 @@ ajk.core = {
         purchaseUpTo: function(button, target, method, identifier)
         {
             var current = 0;
-            while(button.controller.hasResources(button.model) && current < target)
+            for (current = 0; current < target; ++current)
             {
+                button.update();
+                if(!button.controller.hasResources(button.model)) { break; }
+                var success = false;
                 button.controller.buyItem(button.model, {}, (result) => {
-                    if (result)
-                    {
-                        this.log.warn('Failed to ' + method + ' ' + identifier);
-                        return;
-                    }
-                    else
-                    {
-                        current += 1;
-                    }
+                    if (result) { success = true; }
                 });
+                if (!success)
+                {
+                    this.log.warn('Failed to ' + method + ' ' + identifier);
+                    break;
+                }
             }
             if (current == 0) { return; }
             this.log.debug(method + 'd ' + identifier + ' ' + current + ' / ' + target + ' times');
@@ -586,7 +586,10 @@ ajk.core = {
             }, 0);
             var ratio = prodImpact / (prodImpact + consImpact);
             if (isNaN(ratio)) { ratio = 1; }
-            var targetSmelters = Math.min(Math.ceil(ratio * smelters.val), smelters.val);
+
+            // Only operate on half the smelters
+            var adjustedRatio = (ratio * 0.5) + 0.5;
+            var targetSmelters = Math.min(Math.ceil(adjustedRatio * smelters.val), smelters.val);
             this.log.debug('Setting ' + targetSmelters + ' / ' + smelters.val + ' smelters active');
             smelters.on = targetSmelters;
 

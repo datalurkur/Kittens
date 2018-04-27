@@ -180,6 +180,7 @@ ajk.analysisModule.addPreprocessor(function(data, cache, itemMap, log) {
 
 // Happiness
 ajk.analysisModule.addPreprocessor(function(data, cache, itemMap, log) {
+    if (!itemMap.hasOwnProperty('amphitheatre')) { return; }
     var mod = (2 - ajk.base.getHappiness()) * 3;
     data.addModifier('amphitheatre', mod, 'happiness');
 });
@@ -296,12 +297,54 @@ ajk.analysisModule.addPostprocessor(function(data, cache, itemMap, log) {
     }
 });
 
+// Containment Chamber Throttling
+ajk.analysisModule.addPostprocessor(function(data, cache, itemMap, log) {
+    log.debug('Throttling containment chamber purchasing');
+    log.indent();
+    var needsAntimatterStorage = false;
+    Object.keys(itemMap).forEach((itemName) => {
+        itemMap[itemName].decisionTree.capacityBlockers.forEach((blocker) => {
+            if (blocker[0] == 'antimatter')
+            {
+                needsAntimatterStorage = true;
+            }
+        });
+    });
+    if (!needsAntimatterStorage)
+    {
+        var index = data.selected.indexOf('containmentChamber');
+        if (index != -1)
+        {
+            data.selected.splice(index, 1);
+        }
+    }
+    log.unindent();
+});
+
+// AI Core Throttling
+ajk.analysisModule.addPostprocessor(function(data, cache, itemMap, log) {
+    log.debug('Throttling AI core purchasing');
+    log.indent();
+
+    var gflopProduction = ajk.base.getEffect('gflopsPerTickBase');
+    var gflopConsumption = ajk.base.getEffect('gflopsConsumption');
+    if (gflopProduction >= gflopConsumption)
+    {
+        var index = data.selected.indexOf('aiCore');
+        if (index != -1)
+        {
+            data.selected.splice(index, 1);
+        }
+    }
+    log.unindent();
+});
+
 // Competition
 ajk.analysisModule.addPostprocessor(function(data, cache, itemMap, log) {
     log.debug('Filtering by resource competition');
     log.indent();
     var meetsCriteria = [];
-    data.eligible.forEach((itemName) => {
+    data.selected.forEach((itemName) => {
         var treeA = itemMap[itemName].decisionTree;
         var inCompetition = false;
         for (var i = 0; i < meetsCriteria.length; ++i)
@@ -323,26 +366,4 @@ ajk.analysisModule.addPostprocessor(function(data, cache, itemMap, log) {
     log.debug('Filtered out ' + (data.eligible.length - meetsCriteria.length) + ' items');
     log.unindent();
     data.selected = meetsCriteria;
-});
-
-// Containment Chamber Throttling
-ajk.analysisModule.addPostprocessor(function(data, cache, itemMap, log) {
-    log.debug('Throttling containment chamber purchasing');
-    log.indent();
-    var needsAntimatterStorage = false;
-    data.selected.forEach((itemName) => {
-        if (itemMap[itemName].decisionTree.capacityBlockers.hasOwnProperty('antimatter'))
-        {
-            needsAntimatterStorage = true;
-        }
-    });
-    if (!needsAntimatterStorage)
-    {
-        var index = data.selected.indexOf('containmentChamber');
-        if (index != -1)
-        {
-            data.selected.splice(index, 1);
-        }
-    }
-    log.unindent();
 });
