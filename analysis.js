@@ -312,10 +312,10 @@ ajk.analysisModule.addPostprocessor(function(data, cache, itemMap, log) {
     });
     if (!needsAntimatterStorage)
     {
-        var index = data.selected.indexOf('containmentChamber');
+        var index = data.eligible.indexOf('containmentChamber');
         if (index != -1)
         {
-            data.selected.splice(index, 1);
+            data.eligible.splice(index, 1);
         }
     }
     log.unindent();
@@ -330,10 +330,10 @@ ajk.analysisModule.addPostprocessor(function(data, cache, itemMap, log) {
     var gflopConsumption = ajk.base.getEffect('gflopsConsumption');
     if (gflopProduction >= gflopConsumption)
     {
-        var index = data.selected.indexOf('aiCore');
+        var index = data.eligible.indexOf('aiCore');
         if (index != -1)
         {
-            data.selected.splice(index, 1);
+            data.eligible.splice(index, 1);
         }
     }
     log.unindent();
@@ -344,7 +344,7 @@ ajk.analysisModule.addPostprocessor(function(data, cache, itemMap, log) {
     log.debug('Filtering by resource competition');
     log.indent();
     var meetsCriteria = [];
-    data.selected.forEach((itemName) => {
+    data.eligible.forEach((itemName) => {
         var treeA = itemMap[itemName].decisionTree;
         var inCompetition = false;
         for (var i = 0; i < meetsCriteria.length; ++i)
