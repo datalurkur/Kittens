@@ -33,6 +33,7 @@ ajk.core = {
         priorityResourceDemand: {},
         resourceCapacityDemand: {},
         purchaseDemand:         {},
+        energyThrottled:        false,
 
         events: [],
         crafts: [],
@@ -232,7 +233,7 @@ ajk.core = {
 
         prioritize: function()
         {
-            this.analysisData = ajk.analysisModule.prepare(this.itemData, this.resourceCapacityDemand, this.purchaseDemand);
+            this.analysisData = ajk.analysisModule.prepare(this.itemData, this.resourceCapacityDemand, this.purchaseDemand, this.energyThrottled);
 
             this.analysisData.eligible.forEach((itemName) => {
                 var decisionTree = ajk.decisionTreeFactory.buildDecisionTree(this.cache, this.itemData[itemName].costData);
@@ -594,13 +595,34 @@ ajk.core = {
             smelters.on = targetSmelters;
 
             // Power logic
-            // Keep power production above zero
-            var energyDelta = ajk.base.getEnergyProd() - ajk.base.getEnergyCons() - 1;
             var biolab = ajk.base.getBuilding('biolab');
-            var biolabDelta = energyDelta * biolab.effects.energyConsumption;
-            var targetBiolabs = Math.min(Math.max(0, Math.floor(biolab.on + biolabDelta)), biolab.val);
+            var ccData = ajk.base.getSpaceBuilding('containmentChamber');
+
+            // Keep power production above zero
+            var energyDelta = ajk.base.getEnergyProd() - ajk.base.getEnergyCons() - 1 +
+                (biolab.on * biolab.effects.energyConsumption) +
+                (ccData.on * ccData.effects.energyConsumption);
+
+            // Activate containment chambers as needed
+            var amData = this.cache.getResourceData('antimatter');
+            var slData = ajk.base.getSpaceBuilding('sunlifter');
+            var storagePerCC = ccData.effects.antimatterMax;
+
+            var desiredAMStorage = amData.available + slData.val;
+            var ccTargetOn = Math.min(ccData.val, Math.ceil(desiredAMStorage / storagePerCC));
+            var ccAvailOn  = Math.max(0, Math.floor(energyDelta / ccData.effects.energyConsumption));
+            var ccActualOn = Math.min(ccTargetOn, ccAvailOn);
+            this.log.debug('Setting ' + ccActualOn + ' / ' + ccData.val + ' containment chambers active');
+            ccData.on = ccActualOn;
+            energyDelta -= (ccActualOn * ccData.effects.energyConsumption);
+
+            var biolabTarget = energyDelta * biolab.effects.energyConsumption;
+            var targetBiolabs = Math.min(Math.max(0, biolabTarget), biolab.val);
             this.log.debug('Setting ' + targetBiolabs + ' / ' + biolab.val + ' biolabs active');
             biolab.on = targetBiolabs;
+
+            if (ccActualOn < ccTargetOn || targetBiolabs < biolab.val) { this.energyThrottled = true; }
+            else { this.energyThrottled = false; }
         },
 
         upgradeItems: function()

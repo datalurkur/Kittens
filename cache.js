@@ -546,7 +546,12 @@ ajk.cache = {
 
     getItemsThatStore: function(resourceName)
     {
-        return this.internal.effectCache['storage'].resourceToItems[resourceName];
+        return this.internal.effectCache['storage'].resourceToItems[resourceName] || [];
+    },
+
+    getItemsThatProduce: function(resourceName)
+    {
+        return this.internal.effectCache['production'].resourceToItems[resourceName] || [];
     },
 
     isCraftUnlocked: function(craftName)

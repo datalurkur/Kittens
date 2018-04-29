@@ -56,6 +56,7 @@ var ajk = {
 
         // Misc stuff
         getBuilding:        function(bldName)     { return gamePage.bld.get(bldName);                                      },
+        getSpaceBuilding:   function(bldName)     { return gamePage.space.getBuilding(bldName);                            },
         getSeason:          function()            { return gamePage.calendar.season;                                       },
         getObserveButton:   function()            { return gamePage.calendar.observeBtn;                                   },
         getDay:             function()            { return gamePage.calendar.day;                                          },

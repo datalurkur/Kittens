@@ -8,13 +8,14 @@ ajk.analysisModule = {
         preprocessors:  [],
         postprocessors: [],
 
-        buildEmptyAnalysisData: function(itemMap, capLimits, purchaseDemand)
+        buildEmptyAnalysisData: function(itemMap, capLimits, purchaseDemand, powerThrottled)
         {
             var data = {
                 eligible:                      Object.keys(itemMap),
                 selected:                      [],
                 resourceCapacityLimitations:   capLimits,
                 purchaseDemand:                purchaseDemand,
+                powerThrottled:                powerThrottled,
                 resourceProductionLimitations: {},
                 weights:                       {},
                 priorityOrder:                 [],
@@ -29,7 +30,7 @@ ajk.analysisModule = {
         },
     },
 
-    prepare: function(itemMap, capLimits, purchaseDemand) { return this.internal.buildEmptyAnalysisData(itemMap, capLimits, purchaseDemand); },
+    prepare: function(itemMap, capLimits, purchaseDemand, powerThrottled) { return this.internal.buildEmptyAnalysisData(itemMap, capLimits, purchaseDemand, powerThrottled); },
     preprocess: function(data, cache, itemMap)
     {
         this.internal.log.debug('Performing analysis preprocessing pass');
@@ -203,6 +204,19 @@ ajk.analysisModule.addPreprocessor(function(data, cache, itemMap, log) {
     });
 });
 
+// Power demands
+ajk.processors.config.powerBonus = 5;
+ajk.analysisModule.addPreprocessor(function(data, cache, itemMap, log) {
+    if (!data.powerThrottled) { return; }
+    log.debug('Applying power demand bonuses');
+    cache.getItemsThatProduce('energy').forEach((itemName) => {
+        if (itemMap.hasOwnProperty(itemName))
+        {
+            data.addModifier(itemName, ajk.processors.config.powerBonus, 'power demand');
+        }
+    });
+});
+
 // Time cost
 ajk.analysisModule.addPreprocessor(function(data, cache, itemMap, log) {
     var params = {
@@ -299,18 +313,12 @@ ajk.analysisModule.addPostprocessor(function(data, cache, itemMap, log) {
 
 // Containment Chamber Throttling
 ajk.analysisModule.addPostprocessor(function(data, cache, itemMap, log) {
-    log.debug('Throttling containment chamber purchasing');
-    log.indent();
-    var needsAntimatterStorage = false;
-    Object.keys(itemMap).forEach((itemName) => {
-        itemMap[itemName].decisionTree.capacityBlockers.forEach((blocker) => {
-            if (blocker[0] == 'antimatter')
-            {
-                needsAntimatterStorage = true;
-            }
-        });
-    });
-    if (!needsAntimatterStorage)
+    var cc = ajk.base.getSpaceBuilding('containmentChamber');
+    var antimatterData = cache.getResourceData('antimatter');
+    var toAMCap = antimatterData.max - antimatterData.available;
+    var sunlifters = ajk.base.getSpaceBuilding('sunlifter');
+
+    if (cc.on < cc.val || sunlifters.val < toAMCap)
     {
         var index = data.eligible.indexOf('containmentChamber');
         if (index != -1)
@@ -318,7 +326,6 @@ ajk.analysisModule.addPostprocessor(function(data, cache, itemMap, log) {
             data.eligible.splice(index, 1);
         }
     }
-    log.unindent();
 });
 
 // AI Core Throttling

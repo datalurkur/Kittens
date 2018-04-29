@@ -126,7 +126,6 @@ ajk.costDataFactory = {
                     ));
                 }
             }
-            /*
             else if (resource == 'relic')
             {
                 var btn = ajk.base.religionTab().refineTCBtn;
@@ -136,14 +135,13 @@ ajk.costDataFactory = {
                         'timeCrystal',
                         cache,
                         'refine',
-                        []
-                        [['timeCrystal', 10000]],
-                        1,
+                        [],
+                        [['timeCrystal', 25]],
+                        1 + (ajk.base.getEffect('relicRefineRatio') * ajk.base.getZigguratUpgrade('blackPyramid').val),
                         btn
                     ));
                 }
             }
-            */
 
             this.log.unindent();
             return data;
