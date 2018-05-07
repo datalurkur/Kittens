@@ -121,7 +121,7 @@ ajk.costDataFactory = {
                         'refine',
                         [],
                         [['tears', 10000]],
-                        1,
+                        ajk.base.getEffect('tcRefineRatio'),
                         btn
                     ));
                 }
@@ -138,6 +138,30 @@ ajk.costDataFactory = {
                         [],
                         [['timeCrystal', 25]],
                         1 + (ajk.base.getEffect('relicRefineRatio') * ajk.base.getZigguratUpgrade('blackPyramid').val),
+                        btn
+                    ));
+                }
+            }
+            else if (resource == 'apocrypha')
+            {
+                var btn = ajk.base.religionTab().faithResetBtn;
+                if (btn != null)
+                {
+                    var currentTLevel = ajk.base.getTLevel();
+                    var currentBonus  = ajk.base.getFaithRatio();
+                    var deltaBonus = Math.max(0, value - currentBonus);
+
+                    // Compute required faith
+                    var bonusRatio = 1.01 * Math.pow(1 + currentTLevel, 2);
+                    var deltaFaith = (deltaBonus * 100000) / (0.1 * bonusRatio);
+
+                    data.options.push(this.buildOptionCostData(
+                        'faith',
+                        cache,
+                        'reset',
+                        [],
+                        [['storedFaith', deltaFaith]],
+                        1,
                         btn
                     ));
                 }

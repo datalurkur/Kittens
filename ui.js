@@ -10,6 +10,11 @@ ajk.ui = {
             'color': 'grey',
             'on': false,
         },
+        'apocrypha':
+        {
+            'color': 'skyblue',
+            'on': false
+        },
         'void':
         {
             'color': 'black',
@@ -140,6 +145,11 @@ ajk.ui = {
         {
             'color': 'yellow',
             'on'   : false,
+        },
+        'storedFaith':
+        {
+            'color': 'purple',
+            'on'   : false
         },
     },
 

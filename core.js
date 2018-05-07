@@ -22,6 +22,7 @@ ajk.core = {
         // Operating variables
         tickThread:    null,
         postResetDone: false,
+        resetPending:  false,
 
         year:         -1,
         season:       -1,
@@ -95,10 +96,13 @@ ajk.core = {
             });
         },
 
+        buildResetItemList: function()
+        {
+            // TODO
+        },
+
         rebuildItemList: function()
         {
-            this.itemData = {};
-
             var bonfireTab = ajk.base.bonfireTab();
             ajk.base.switchToTab(bonfireTab);
             this.collectItemData(bonfireTab.buttons, 'structure', 1);
@@ -135,6 +139,33 @@ ajk.core = {
                 });
             }
             ajk.base.switchToTab(null);
+        },
+
+        rebuildTranscendenceData: function()
+        {
+            if (!ajk.base.getReligionUpgrade('transcendence').on) { return; }
+
+            var currentTLevel = ajk.base.getTLevel();
+            var requiredBonus = ajk.base.getTRatio(currentTLevel + 1) - ajk.base.getTRatio(currentTLevel);
+
+            var relTab = ajk.base.religionTab();
+            ajk.base.switchToTab(relTab);
+            var transcendItem = relTab.transcendBtn;
+            ajk.base.switchToTab(null);
+
+            var apocCost = [{
+                name: 'apocrypha',
+                val:  requiredBonus
+            }];
+            var costData = ajk.costDataFactory.buildCustomCostData(this.cache, 'transcend', 'mortal limits', apocCost, transcendItem);
+
+            this.itemData['transcend'] = {
+                item:         transcendItem,
+                type:         'meta',
+                significance: 3,
+                costData:     costData,
+                decisionTree: null
+            };
         },
 
         rebuildExplorationData: function()
@@ -212,22 +243,12 @@ ajk.core = {
             }
         },
 
-        rebuildItems: function(resetMode)
+        buildCostData: function()
         {
-            this.rebuildItemList();
-
-            this.cache.rebuild(this.itemData, !resetMode);
-
-            this.data = {};
             for (var itemName in this.itemData)
             {
                 var costData = ajk.costDataFactory.buildCostData(this.cache, this.itemData[itemName].item);
                 this.itemData[itemName].costData = costData;
-            }
-
-            if (!resetMode)
-            {
-                this.rebuildExplorationData();
             }
         },
 
@@ -327,7 +348,7 @@ ajk.core = {
         sacrificeUpTo: function(button, target, identifier)
         {
             var availableActions = button.model.prices.reduce((allowed, price) => {
-                var available = Math.floor(this.cache.getResourceData(price.name).available / price.val);
+                var available = Math.floor(ajk.base.getResource(price.name).value / price.val);
                 return Math.min(allowed, available);
             }, Infinity);
             var actualCount = Math.min(target, availableActions);
@@ -443,6 +464,21 @@ ajk.core = {
                     else if (method == 'refine')
                     {
                         this.purchaseUpTo(opDecision.optionData.extraData, opDecision.actionCount, method, opDecision.optionData.identifier);
+                    }
+                    else if (method == 'reset')
+                    {
+                        if (opDecision.optionData.identifier == 'faith')
+                        {
+                            if (opDecision.maxTime == 0)
+                            {
+                                this.log.info('Attempting to perform faith reset');
+                                opDecision.optionData.extraData.click();
+                            }
+                        }
+                        else
+                        {
+                            // TODO - Other kinds of resets
+                        }
                     }
                     else if (method == 'purchase' || method == 'explore')
                     {
@@ -577,8 +613,8 @@ ajk.core = {
             // Smelter logic
             var smelters = ajk.base.getBuilding('smelter');
             if (smelters.val == 0) { return; }
-            var cons = this.cache.getResourceConsumptionForItem('smelter');
-            var prod = this.cache.getResourceProductionForItem('smelter');
+            var cons = this.cache.getResourceConsumptionForItem('smelter') || {};
+            var prod = this.cache.getResourceProductionForItem('smelter') || {};
             var consImpact = Object.keys(cons).reduce((a, r) => {
                 return a + ((this.utilization[r] || 0) * cons[r]);
             }, 0);
@@ -616,7 +652,7 @@ ajk.core = {
             ccData.on = ccActualOn;
             energyDelta -= (ccActualOn * ccData.effects.energyConsumption);
 
-            var biolabTarget = energyDelta * biolab.effects.energyConsumption;
+            var biolabTarget = Math.floor(energyDelta * biolab.effects.energyConsumption);
             var targetBiolabs = Math.min(Math.max(0, biolabTarget), biolab.val);
             this.log.debug('Setting ' + targetBiolabs + ' / ' + biolab.val + ' biolabs active');
             biolab.on = targetBiolabs;
@@ -683,11 +719,14 @@ ajk.core = {
 
             while(1)
             {
-                this.rebuildItems(true);
+                this.itemData = {};
+                this.rebuildItemList();
+                this.buildCostData();
+                this.cache.rebuild(this.itemData, false);
                 this.prioritize();
                 var itemsBuilt = this.pursuePriority();
                 this.upgradeItems();
-                if (itemsBuild == 0) { break; }
+                if (itemsBuilt == 0) { break; }
                 this.successes += itemsBuilt;
             }
 
@@ -698,6 +737,49 @@ ajk.core = {
                 this.trades,
                 this.utilization
             );
+        },
+
+        preResetTick: function()
+        {
+            var doRebuild = this.successes > 0 ||
+                            ajk.base.getYear() != this.year ||
+                            ajk.base.getSeason() != this.season;
+
+            this.year = ajk.base.getYear();
+            this.season = ajk.base.getSeason();
+
+            this.resetAccumulators();
+
+            // TODO - Only need to do this once, move it out of here
+            this.itemData = {};
+            this.buildResetItemList();
+            this.buildCostData();
+            this.cache.rebuild(this.itemData, false);
+            this.prioritize();
+
+            this.applyAmbientProductionConsumption();
+
+            this.successes += this.pursuePriority();
+
+            this.convertCatpower();
+            this.convertFaith();
+
+            this.computeResourceUtilization();
+
+            this.balanceStructures();
+
+            ajk.jobs.update(doRebuild, this.utilization);
+
+            ajk.statistics.update(
+                this.cache,
+                this.events,
+                this.crafts,
+                this.trades,
+                this.utilization
+            );
+
+            ajk.ui.refreshAnalysis(this.itemData, this.analysisData);
+            ajk.ui.refresh();
         },
 
         standardTick: function(forceRecompute)
@@ -720,7 +802,12 @@ ajk.core = {
             // If we didn't build anything previously, we don't need to recompute priorities and such
             if (doRebuild)
             {
-                this.rebuildItems(false);
+                this.itemData = {};
+                this.rebuildItemList();
+                this.buildCostData();
+                this.cache.rebuild(this.itemData, true);
+                this.rebuildExplorationData();
+                this.rebuildTranscendenceData();
                 this.prioritize();
                 timerData.interval('Rebuild and Prioritize');
             }
@@ -782,11 +869,14 @@ ajk.core = {
         {
             if (ajk.base.getYear() == 0 &&
                 ajk.base.getSeason() == 0 &&
-                ajk.base.getDay() == 0 &&
                 !this.postResetDone)
             {
                 this.postResetLoop();
                 this.postResetDone = true;
+            }
+            else if (this.resetPending)
+            {
+                this.preResetTick();
             }
             else
             {

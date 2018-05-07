@@ -289,6 +289,7 @@ ajk.analysisModule.addPreprocessor(function(data, cache, itemMap, log) {
 ajk.analysisModule.addPostprocessor(function(data, cache, itemMap, log) {
     for (var demand in data.purchaseDemand)
     {
+        if (!itemMap.hasOwnProperty(demand)) { continue; }
         var demander = data.purchaseDemand[demand];
         var modifier = Math.min(2, Math.exp(data.weights[demander].weight) * 0.05);
         data.addModifier(demand, modifier, demander);

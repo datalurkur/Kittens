@@ -51,8 +51,11 @@ var ajk = {
 
         // Religion stuff
         getFaith:           function()            { return gamePage.religion.faith;                                        },
+        getFaithRatio:      function()            { return gamePage.religion.faithRatio;                                   },
         getReligionUpgrade: function(upgradeName) { return gamePage.religion.getRU(upgradeName);                           },
         getZigguratUpgrade: function(upgradeName) { return gamePage.religion.getZU(upgradeName);                           },
+        getTLevel:          function()            { return gamePage.religion.getTranscendenceLevel();                      },
+        getTRatio:          function(level)       { return gamePage.religion.getTranscendenceRatio(level);                 },
 
         // Misc stuff
         getBuilding:        function(bldName)     { return gamePage.bld.get(bldName);                                      },

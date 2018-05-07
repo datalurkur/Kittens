@@ -292,6 +292,19 @@ ajk.cache = {
                 rData.perTick   = (prod + cons);
                 rData.available = ajk.base.getResource(resource).value;
             }
+
+            this.resourceCache['apocrypha'] = {
+                unlocked:  ajk.base.getReligionUpgrade('apocripha').on,
+                max:       Infinity,
+                perTick:   0,
+                available: ajk.base.getFaithRatio()
+            };
+            this.resourceCache['storedFaith'] = {
+                unlocked:  true,
+                max:       Infinity,
+                perTick:   this.resourceCache['faith'].perTick * ajk.base.getFaithRatio(),
+                available: ajk.base.getFaith()
+            };
         },
 
         cacheHuntingData: function()

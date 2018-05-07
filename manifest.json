@@ -2,7 +2,7 @@
     "manifest_version": 2,
     "name": "Kitten Savant",
     "description": "This kitten is especially gifted, and has traveled through time to assist you with your endeavors.",
-    "version": "0.1.7",
+    "version": "0.1.9",
     "icons": {
         "16":  "icons/16.png",
         "48":  "icons/48.png",
