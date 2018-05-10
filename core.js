@@ -610,6 +610,7 @@ ajk.core = {
 
         balanceStructures: function()
         {
+            this.energyThrottled = false;
             // Smelter logic
             var smelters = ajk.base.getBuilding('smelter');
             if (smelters.val == 0) { return; }
@@ -651,14 +652,16 @@ ajk.core = {
             this.log.debug('Setting ' + ccActualOn + ' / ' + ccData.val + ' containment chambers active');
             ccData.on = ccActualOn;
             energyDelta -= (ccActualOn * ccData.effects.energyConsumption);
+            this.energyThrottled |= (ccActualOn < ccTargetOn);
 
-            var biolabTarget = Math.floor(energyDelta * biolab.effects.energyConsumption);
-            var targetBiolabs = Math.min(Math.max(0, biolabTarget), biolab.val);
-            this.log.debug('Setting ' + targetBiolabs + ' / ' + biolab.val + ' biolabs active');
-            biolab.on = targetBiolabs;
-
-            if (ccActualOn < ccTargetOn || targetBiolabs < biolab.val) { this.energyThrottled = true; }
-            else { this.energyThrottled = false; }
+            if (biolab.effects.energyConsumption > 0)
+            {
+                var biolabTarget = Math.floor(energyDelta * biolab.effects.energyConsumption);
+                var targetBiolabs = Math.min(Math.max(0, biolabTarget), biolab.val);
+                this.log.debug('Setting ' + targetBiolabs + ' / ' + biolab.val + ' biolabs active');
+                biolab.on = targetBiolabs;
+                this.energyThrottled |= (targetBiolabs < biolab.val);
+            }
         },
 
         upgradeItems: function()
