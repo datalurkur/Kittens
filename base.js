@@ -193,16 +193,13 @@ var ajk = {
             var mpower = village.game.resPool.get("manpower");
             squads = Math.min(squads, Math.floor(mpower.value / 100));
 
-            if (squads < 1) { return; }
+            if (squads < 1)
+            {
+                return;
+            }
 
             village.game.resPool.addResEvent("manpower", -(squads * 100));
-
-            var totalYield = null;
-
-            for (var i = squads - 1; i >= 0; i--)
-            {
-                totalYield = village.sendHuntersInternal(totalYield);
-            }
+            var totalYield = village.sendHuntersImpl(squads);
             village.gainHuntRes(totalYield, squads);
             // ----------------------------------------------------------------------------------------
 
@@ -254,11 +251,7 @@ var ajk = {
             diplo.game.resPool.addResEvent("gold", -15 * amt);
             diplo.game.resPool.addResEvent(race.buys[0].name, -race.buys[0].val * amt);
 
-            var yieldResTotal = null;
-            for (var i = 0; i < amt; i++)
-            {
-                yieldResTotal = diplo.tradeInternal(race, true, yieldResTotal);  //suppress msg
-            }
+            var yieldResTotal = diplo.tradeImpl(race, amt);
 
             diplo.gainTradeRes(yieldResTotal, amt);
             // ----------------------------------------------------------------------------------------
