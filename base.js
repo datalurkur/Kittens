@@ -292,7 +292,7 @@ var ajk = {
             var needNextLevel = religion.getTranscendenceRatio(tclevel + 1) - religion.getTranscendenceRatio(tclevel);
             if (religion.faithRatio <= needNextLevel)
             {
-                return return religion.faithRaiot - needNextLevel;
+                return religion.faithRaiot - needNextLevel;
             }
 
             religion.faithRatio -= needNextLevel;
