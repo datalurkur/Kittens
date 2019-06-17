@@ -154,6 +154,7 @@ ajk.costDataFactory = {
                     // Compute required faith
                     var bonusRatio = 1.01 * Math.pow(1 + currentTLevel, 2);
                     var deltaFaith = (deltaBonus * 100000) / (0.1 * bonusRatio);
+                    this.log.detail('Adding faith reset option with delta faith ' + deltaFaith);
 
                     data.options.push(this.buildOptionCostData(
                         'faith',

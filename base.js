@@ -272,6 +272,51 @@ var ajk = {
             });
             return success;
         },
+        transcend: function()
+        {
+            return this.transcendHack();
+        },
+        transcendHack: function()
+        {
+            var religion = gamePage.religion;
+
+            // This is copied from the kittens code's religion module
+            // With this behavior copied, we can transcend without prompts
+            // ----------------------------------------------------------------------------------------
+            if (!religion.getRU("transcendence").on)
+            {
+                return -1;
+            }
+
+            var tclevel = religion.getTranscendenceLevel();
+            var needNextLevel = religion.getTranscendenceRatio(tclevel + 1) - religion.getTranscendenceRatio(tclevel);
+            if (religion.faithRatio <= needNextLevel)
+            {
+                return return religion.faithRaiot - needNextLevel;
+            }
+
+            religion.faithRatio -= needNextLevel;
+            religion.tcratio += needNextLevel;
+            religion.tclevel += 1;
+            return 0;
+            // ----------------------------------------------------------------------------------------
+        },
+        resetFaith: function()
+        {
+            return this.resetFaithHack();
+        },
+        resetFaithHack: function()
+        {
+            // This is copied from the kittens code's religion module
+            // With this behavior copied, we can reset faith without prompts
+            // ----------------------------------------------------------------------------------------
+            if (!gamePage.religion.getRU("apocripha").on)
+            {
+                return false;
+            }
+            gamePage.religion.resetFaithInternal(1.01);
+            return true;
+        }
     },
 };
 

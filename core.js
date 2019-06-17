@@ -472,12 +472,36 @@ ajk.core = {
                             if (opDecision.maxTime == 0)
                             {
                                 this.log.info('Attempting to perform faith reset');
-                                opDecision.optionData.extraData.click();
+                                if (!ajk.base.resetFaith())
+                                {
+                                    this.log.warn('Failed to reset faith');
+                                }
                             }
                         }
                         else
                         {
                             // TODO - Other kinds of resets
+                        }
+                    }
+                    else if (method == 'transcend')
+                    {
+                        if (opDecision.maxTime == 0)
+                        {
+                            this.log.info('Attempting to transcend');
+                            var delta = ajk.base.transcend();
+                            if (delta == 0)
+                            {
+                                this.log.info('Successfully transcended');
+                            }
+                            else if (delta == -1)
+                            {
+                                this.log.warn('Attempted to transcend before transcendence was available');
+                            }
+                            else
+                            {
+                                this.log.warn('Failed to transcend - missing ' + delta + ' bonus faith');
+                            }
+                            this.rebuildTranscendenceData();
                         }
                     }
                     else if (method == 'purchase' || method == 'explore')
@@ -889,6 +913,12 @@ ajk.core = {
 
         tick: function(forceRecompute)
         {
+            var gamePageCheck = gamePage;
+            if (typeof gamePageCheck === 'undefined')
+            {
+                this.log.debug('Game is not loaded, deferring...');
+                return;
+            }
             var timestamp = new Date();
             this.log.debug('Starting tick at ' + timestamp.toUTCString());
             try
