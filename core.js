@@ -353,7 +353,7 @@ ajk.core = {
             }, Infinity);
             var actualCount = Math.min(target, availableActions);
             if (actualCount == 0) { return; }
-            if (!button.controller.sacrifice(button.model, actualCount))
+            if (!button.controller._transform(button.model, actualCount))
             {
                 // FIXME - Figure out why this happens
                 this.log.warn('Failed to sacrifice ' + identifier + ' ' + actualCount + ' times');
