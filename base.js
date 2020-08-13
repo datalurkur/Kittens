@@ -172,38 +172,10 @@ var ajk = {
         hunt: function(hunts)
         {
             if (this.simulate) { return; }
-            if (ajk.config.useAccurateHunting)
+            for (var i = 0; i < hunts; ++i)
             {
-                return this.huntHack(hunts);
+                gamePage.village.sendHunters();
             }
-            else
-            {
-                gamePage.village.huntMultiple(hunts);
-                return {};
-            }
-        },
-        huntHack: function(squads)
-        {
-            var village = gamePage.village;
-
-            // This is copied directly from the kittens code's village module
-            // With this behavior copied, we can directly return the results of hunting for easy analysis
-            // In the kittens code, village == this
-            // ----------------------------------------------------------------------------------------
-            var mpower = village.game.resPool.get("manpower");
-            squads = Math.min(squads, Math.floor(mpower.value / 100));
-
-            if (squads < 1)
-            {
-                return;
-            }
-
-            village.game.resPool.addResEvent("manpower", -(squads * 100));
-            var totalYield = village.sendHuntersImpl(squads);
-            village.gainHuntRes(totalYield, squads);
-            // ----------------------------------------------------------------------------------------
-
-            return totalYield;
         },
         praise: function()
         {
@@ -341,7 +313,6 @@ ajk.config = {
     conversionMaxRatio:      0.97,
 
     // Internal game-hack controls
-    useAccurateHunting:      true, // Use copied source in order to get more data about hunting results
     useAccurateTrading:      true, // Use copied source in order to get more data about trading results
 
     // Utilization variables

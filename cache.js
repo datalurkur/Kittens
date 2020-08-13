@@ -166,11 +166,14 @@ ajk.cache = {
         getTradeAmountFor: function(race, saleData)
         {
             var season = ajk.base.getSeason();
-            var seasonModifier;
-                 if (season == 1) { seasonModifier = saleData.seasons.spring; }
-            else if (season == 2) { seasonModifier = saleData.seasons.summer; }
-            else if (season == 3) { seasonModifier = saleData.seasons.autumn; }
-            else                  { seasonModifier = saleData.seasons.winter; }
+            var seasonModifier = 1;
+            if (typeof saleData.seasons !== 'undefined')
+            {
+                     if (season == 1) { seasonModifier += saleData.seasons.spring; }
+                else if (season == 2) { seasonModifier += saleData.seasons.summer; }
+                else if (season == 3) { seasonModifier += saleData.seasons.autumn; }
+                else                  { seasonModifier += saleData.seasons.winter; }
+            }
 
             var amount = saleData.value * ajk.base.getTradeRatio();
             var chance = saleData.chance;
