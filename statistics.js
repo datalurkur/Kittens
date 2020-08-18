@@ -130,6 +130,11 @@ ajk.statistics = {
 
         addDatapoint: function(cache, events, crafts, trades, utilization)
         {
+            if (typeof this.data === 'undefined')
+            {
+                return;
+            }
+
             var time = (new Date()).valueOf();
             // If the last value in a data set is more than 50% behind the last expected tick, start a new data set
             var discontinuityThreshold = time - (ajk.config.tickFrequency * 1500);
@@ -206,16 +211,23 @@ ajk.statistics = {
             }
             else
             {
-                var parsed = JSON.parse(localStorage.ajkStats);
-                if (parsed.version != ajk.statistics.version)
+                try
                 {
-                    this.log.warn('Old version of statistics data detected, clearing previous stats');
-                    this.log.flush(false);
-                    this.clear();
+                    var parsed = JSON.parse(localStorage.ajkStats);
+                    if (parsed.version != ajk.statistics.version)
+                    {
+                        this.log.warn('Old version of statistics data detected, clearing previous stats');
+                        this.log.flush(false);
+                        this.clear();
+                    }
+                    else
+                    {
+                        this.data = parsed;
+                    }
                 }
-                else
+                catch (err)
                 {
-                    this.data = parsed;
+                    this.clear();
                 }
             }
         },

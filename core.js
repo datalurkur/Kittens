@@ -701,7 +701,20 @@ ajk.core = {
                 if (mData.stages[mData.stage + 1].stageUnlocked)
                 {
                     this.log.info('Upgrading ' + mData.name + ' to stage ' + (mData.stage + 1));
-                    item.controller.upgradeCallback(item.model, true);
+
+                    // Copied from Kittens code
+                    var metadataRaw = item.controller.getMetadataRaw(item.model);
+                    metadataRaw.stage = metadataRaw.stage || 0;
+                    metadataRaw.stage++;
+
+                    metadataRaw.val = 0;    //TODO: fix by using separate value flags
+                    metadataRaw.on = 0;
+                    if (metadataRaw.calculateEffects)
+                    {
+                        metadataRaw.calculateEffects(metadataRaw, item.controller.game);
+                    }
+                    item.controller.game.upgrade(metadataRaw.upgrades);
+                    item.controller.game.render();
                 }
             }
         },
@@ -913,8 +926,7 @@ ajk.core = {
 
         tick: function(forceRecompute)
         {
-            var gamePageCheck = gamePage;
-            if (typeof gamePageCheck === 'undefined')
+            if (typeof gamePage === 'undefined')
             {
                 this.log.debug('Game is not loaded, deferring...');
                 return;

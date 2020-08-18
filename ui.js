@@ -329,6 +329,10 @@ ajk.ui = {
     updateGraphData: function()
     {
         var data = ajk.statistics.get();
+        if (typeof data === 'undefined')
+        {
+            return;
+        }
 
         // Event significance toggles
         var eventToggles = d3.select('.toggleContainer #events').selectAll('div').data(this.eventChannels);

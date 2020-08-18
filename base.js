@@ -54,8 +54,8 @@ var ajk = {
         getFaithRatio:      function()            { return gamePage.religion.faithRatio;                                   },
         getReligionUpgrade: function(upgradeName) { return gamePage.religion.getRU(upgradeName);                           },
         getZigguratUpgrade: function(upgradeName) { return gamePage.religion.getZU(upgradeName);                           },
-        getTLevel:          function()            { return gamePage.religion.getTranscendenceLevel();                      },
-        getTRatio:          function(level)       { return gamePage.religion.getTranscendenceRatio(level);                 },
+        getTLevel:          function()            { return gamePage.religion.transcendenceTier;                            },
+        getTRatio:          function(level)       { return gamePage.religion._getTranscendTotalPrice(level);               },
 
         // Misc stuff
         getBuilding:        function(bldName)     { return gamePage.bld.get(bldName);                                      },
