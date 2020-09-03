@@ -260,11 +260,11 @@ var ajk = {
                 return -1;
             }
 
-            var tclevel = religion.getTranscendenceLevel();
-            var needNextLevel = religion.getTranscendenceRatio(tclevel + 1) - religion.getTranscendenceRatio(tclevel);
+            var tclevel = this.getTLevel();
+            var needNextLevel = this.getTRatio(tclevel + 1) - this.getTRatio(tclevel);
             if (religion.faithRatio <= needNextLevel)
             {
-                return religion.faithRaiot - needNextLevel;
+                return religion.faithRatio - needNextLevel;
             }
 
             religion.faithRatio -= needNextLevel;
